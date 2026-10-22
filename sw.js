@@ -1,6 +1,6 @@
 // 한 장 — 오프라인에서도 앱이 열리도록 화면 파일을 보관해요.
 // 앱을 고쳐서 다시 올릴 때는 아래 VERSION 숫자를 하나 올려 주세요.
-const VERSION = 'hanjang-v5';
+const VERSION = 'hanjang-v6';
 const SHELL = ['./', './index.html', './firebase-config.js', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
