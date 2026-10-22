@@ -1,7 +1,7 @@
 // 한 장 — 오프라인에서도 앱이 열리도록 화면 파일을 보관해요.
 // 앱을 고쳐서 다시 올릴 때는 아래 VERSION 숫자를 하나 올려 주세요.
-const VERSION = 'hanjang-v1';
-const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
+const VERSION = 'hanjang-v2';
+const SHELL = ['./', './index.html', './firebase-config.js', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -26,6 +26,16 @@ self.addEventListener('fetch', e => {
       fetch(req)
         .then(res => { const copy = res.clone(); caches.open(VERSION).then(c => c.put('./index.html', copy)); return res; })
         .catch(() => caches.match('./index.html'))
+    );
+    return;
+  }
+
+  // 친구 기능 설정 파일: 고쳐 올린 값이 바로 쓰이도록 인터넷이 되면 최신 버전
+  if (url.origin === location.origin && url.pathname.endsWith('/firebase-config.js')) {
+    e.respondWith(
+      fetch(req)
+        .then(res => { const copy = res.clone(); caches.open(VERSION).then(c => c.put(req, copy)); return res; })
+        .catch(() => caches.match(req))
     );
     return;
   }
