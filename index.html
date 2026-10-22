@@ -123,6 +123,8 @@ svg{display:block}
 .bk-btn{height:48px;border-radius:12px;background:var(--ink);color:var(--bg);font-weight:700;display:grid;place-items:center;font-size:15px;cursor:pointer}
 .bk-btn.ghost{background:var(--bg);color:var(--ink);border:1px solid var(--line)}
 .bk-row .bk-wide{grid-column:1/-1}
+.bk-row.ex-row{grid-template-columns:repeat(3,1fr)}
+.bk-btn:disabled{opacity:.45}
 .profile-body{padding-bottom:12px}
 input[type=text]{width:100%;font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px}
 input[type=text]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -354,6 +356,16 @@ textarea::placeholder{color:var(--muted)}
       </div>
       <input type="file" id="bkFile" accept="application/json,.json,text/plain,.txt" hidden>
       <p class="p-note" id="bkHelp">'백업 파일 저장'을 누르고 '파일에 저장'을 고르면 iCloud Drive나 아이폰에 보관돼요. 휴대폰을 바꾸거나 앱을 지웠을 때 '백업 불러오기'로 되살릴 수 있어요. 불러온 기록은 지금 기록에 합쳐져요.</p>
+    </section>
+    <section class="backup" aria-labelledby="exTitle">
+      <h3 id="exTitle">글 내보내기</h3>
+      <div class="bk-row ex-row">
+        <button class="bk-btn ghost" id="exPdf">PDF</button>
+        <button class="bk-btn ghost" id="exDocx">워드</button>
+        <button class="bk-btn ghost" id="exTxt">텍스트</button>
+        <button class="bk-btn bk-wide" id="exReady" hidden>파일이 준비됐어요 · 눌러서 저장</button>
+      </div>
+      <p class="p-note" id="exHelp">지금까지 쓴 글을 오래된 순서대로 한 파일에 모아요. 사진은 PDF와 워드 파일에 함께 들어가요. 다 만들어지면 '파일에 저장'이나 카카오톡 등으로 보낼 수 있어요. 읽고 출력하고 나누기 위한 파일이라, 기록을 되살릴 때는 위의 백업 파일을 써 주세요.</p>
     </section>
   </div>
 </section>
@@ -1187,10 +1199,13 @@ function paintBackup(){
   if(need)$('nudgeText').textContent=!lb?'기록을 아직 백업하지 않았어요':days>=30?`마지막 백업 후 ${days}일이 지났어요`:`백업 후 새 게시물이 ${fresh}개 늘었어요`;
 }
 function markBackup(msg){meta.lastBackup=Date.now();saveMeta();paintBackup();toast(msg||'백업 파일을 저장했어요')}
-function downloadFile(file){
+function saveBlob(file){
   const u=URL.createObjectURL(file),a=document.createElement('a');
   a.href=u;a.download=file.name;document.body.appendChild(a);a.click();a.remove();
   setTimeout(()=>URL.revokeObjectURL(u),10000);
+}
+function downloadFile(file){
+  saveBlob(file);
   markBackup(ANDROID?'다운로드 폴더에 백업 파일을 저장했어요':'');
 }
 function backupFile(ext,type){
@@ -1234,6 +1249,169 @@ $('bkFile').addEventListener('change',async e=>{
   posts=[...map.values()].sort((a,b)=>b.createdAt-a.createdAt);
   paintMe();render();renderPM();toast(`게시물 ${incoming.length}개를 불러왔어요`);
 });
+
+/* 글 내보내기: 지금까지 쓴 글을 PDF · 워드(.docx) · 텍스트(.txt) 한 파일로 모아요. 서버 없이 휴대폰 안에서 만들어요.
+   PDF는 한글 글꼴을 넣는 대신 페이지를 그림으로 그려 담아서, 어느 기기에서 열어도 글자가 깨지지 않아요. */
+function fmtStamp(t){const d=new Date(t),h=d.getHours();return `${fmtDate(t)} ${h<12?'오전':'오후'} ${h%12||12}:${pad(d.getMinutes())}`}
+function exportName(ext){const d=new Date();return `한장-글모음-${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}.${ext}`}
+function exportItems(){
+  const list=posts.filter(p=>!p.sample).sort((a,b)=>a.createdAt-b.createdAt);
+  const many=new Set(list.map(p=>p.authorId)).size>1;
+  return list.map(p=>({head:fmtStamp(p.createdAt)+(many?' · '+postAuthor(p).name:''),
+    photo:p.type==='photo'?p.img:null,card:p.type==='photo'?null:(p.text||''),bg:p.bg||0,caption:p.caption||''}));
+}
+const exportTitle=n=>[`한 장 · 내 글 모음`,`${fmtDate(Date.now())} 내보냄 · 게시물 ${n}개`];
+function dataBytes(u){const b=atob(u.slice(u.indexOf(',')+1)),a=new Uint8Array(b.length);for(let i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a}
+function loadImg(src){return new Promise(r=>{if(!src)return r(null);const i=new Image();i.onload=()=>r(i);i.onerror=()=>r(null);i.src=src})}
+
+function buildTxt(items){
+  const out=[...exportTitle(items.length),''];
+  items.forEach(it=>{out.push('────────────────',it.head,'',[it.photo?'[사진]':'',it.card,it.caption].filter(Boolean).join('\n\n')||'(빈 글)','')});
+  return '﻿'+out.join('\n');
+}
+
+/* 워드: .docx는 XML 파일 몇 개를 zip으로 묶은 것이라 직접 만들어요(압축 없이 담기) */
+const CRC=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+function crc32(a){let c=-1;for(let i=0;i<a.length;i++)c=CRC[(c^a[i])&255]^(c>>>8);return (c^-1)>>>0}
+function zipBlob(files,type){
+  const enc=new TextEncoder(),parts=[],cen=[];let off=0;
+  for(const f of files){
+    const name=enc.encode(f.name),data=typeof f.data==='string'?enc.encode(f.data):f.data,crc=crc32(data);
+    const h=new DataView(new ArrayBuffer(30)),c=new DataView(new ArrayBuffer(46));
+    h.setUint32(0,0x04034b50,true);h.setUint16(4,20,true);h.setUint16(6,0x0800,true);h.setUint16(12,0x21,true);
+    h.setUint32(14,crc,true);h.setUint32(18,data.length,true);h.setUint32(22,data.length,true);h.setUint16(26,name.length,true);
+    c.setUint32(0,0x02014b50,true);c.setUint16(4,20,true);c.setUint16(6,20,true);c.setUint16(8,0x0800,true);c.setUint16(14,0x21,true);
+    c.setUint32(16,crc,true);c.setUint32(20,data.length,true);c.setUint32(24,data.length,true);c.setUint16(28,name.length,true);c.setUint32(42,off,true);
+    parts.push(h,name,data);cen.push(c,name);off+=30+name.length+data.length;
+  }
+  const size=cen.reduce((n,x)=>n+x.byteLength,0),e=new DataView(new ArrayBuffer(22));
+  e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,size,true);e.setUint32(16,off,true);
+  return new Blob([...parts,...cen,e],{type});
+}
+const xesc=s=>s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function wRuns(text,rPr){const r=rPr?`<w:rPr>${rPr}</w:rPr>`:'';return text.split('\n').map((l,i)=>`${i?`<w:r>${r}<w:br/></w:r>`:''}<w:r>${r}<w:t xml:space="preserve">${xesc(l)}</w:t></w:r>`).join('')}
+const wP=(text,rPr='',pPr='')=>`<w:p>${pPr?`<w:pPr>${pPr}</w:pPr>`:''}${wRuns(text,rPr)}</w:p>`;
+async function buildDocx(items){
+  const media=[],body=[];const [t1,t2]=exportTitle(items.length);
+  body.push(wP(t1,'<w:b/><w:sz w:val="36"/>','<w:spacing w:after="80"/>'),wP(t2,'<w:color w:val="6B6F80"/><w:sz w:val="20"/>','<w:spacing w:after="360"/>'));
+  for(const it of items){
+    body.push(wP(it.head,'<w:color w:val="6B6F80"/><w:sz w:val="18"/>','<w:keepNext/><w:spacing w:before="240" w:after="120"/>'));
+    if(it.photo){
+      let src=it.photo;const im=await loadImg(src);
+      if(im){
+        if(!/^data:image\/(jpeg|png);base64,/.test(src)){const c=document.createElement('canvas');c.width=im.naturalWidth;c.height=im.naturalHeight;c.getContext('2d').drawImage(im,0,0);src=c.toDataURL('image/jpeg',0.9)}
+        const n=media.length+1,ext=src.startsWith('data:image/png')?'png':'jpeg';media.push({name:`word/media/image${n}.${ext}`,data:dataBytes(src)});
+        let cx=5029200,cy=Math.round(cx*im.naturalHeight/im.naturalWidth);if(cy>6400800){cx=Math.round(cx*6400800/cy);cy=6400800}
+        body.push(`<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="160"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${n}" name="사진 ${n}"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${n}" name="image${n}.${ext}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="img${n}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`);
+      }else body.push(wP('[사진]','<w:color w:val="6B6F80"/>'));
+    }
+    if(it.card){
+      const pc=PALETTE[it.bg]||PALETTE[0],bg=pc.bg.slice(1),bd=s=>`<w:${s} w:val="single" w:sz="4" w:space="14" w:color="${bg}"/>`;
+      body.push(wP(it.card,`<w:rFonts w:ascii="Batang" w:hAnsi="Batang" w:eastAsia="바탕"/><w:color w:val="${pc.fg.slice(1)}"/><w:sz w:val="32"/>`,
+        `<w:pBdr>${['top','left','bottom','right'].map(bd).join('')}</w:pBdr><w:shd w:val="clear" w:color="auto" w:fill="${bg}"/><w:spacing w:before="200" w:after="320" w:line="360" w:lineRule="auto"/><w:ind w:left="300" w:right="300"/><w:jc w:val="center"/>`));
+    }
+    if(it.caption)body.push(wP(it.caption,'','<w:spacing w:after="120" w:line="320" w:lineRule="auto"/>'));
+    body.push('<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="4" w:space="8" w:color="E1E3EA"/></w:pBdr><w:spacing w:after="120"/></w:pPr></w:p>');
+  }
+  const doc=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><w:body>${body.join('')}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+  const styles=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Malgun Gothic" w:hAnsi="Malgun Gothic" w:eastAsia="맑은 고딕" w:cs="Malgun Gothic"/><w:sz w:val="22"/><w:lang w:val="ko-KR" w:eastAsia="ko-KR"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="0" w:line="276" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style></w:styles>`;
+  const rels=media.map((m,i)=>`<Relationship Id="img${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="${m.name.slice(5)}"/>`).join('');
+  return zipBlob([
+    {name:'[Content_Types].xml',data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="jpeg" ContentType="image/jpeg"/><Default Extension="png" ContentType="image/png"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>`},
+    {name:'_rels/.rels',data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`},
+    {name:'word/_rels/document.xml.rels',data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>${rels}</Relationships>`},
+    {name:'word/document.xml',data:doc},{name:'word/styles.xml',data:styles},...media
+  ],'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+}
+
+/* PDF: A4 페이지를 캔버스에 그려 JPEG로 담아요 */
+function pdfBlob(pages,W,H){
+  const enc=new TextEncoder(),chunks=[],offs=[];let len=0;
+  const put=x=>{const b=typeof x==='string'?enc.encode(x):x;chunks.push(b);len+=b.length};
+  const obj=(n,fn)=>{offs[n]=len;put(`${n} 0 obj\n`);fn();put('\nendobj\n')};
+  put('%PDF-1.4\n%âã\n');
+  obj(1,()=>put('<< /Type /Catalog /Pages 2 0 R >>'));
+  obj(2,()=>put(`<< /Type /Pages /Kids [${pages.map((_,i)=>`${3+i*3} 0 R`).join(' ')}] /Count ${pages.length} >>`));
+  pages.forEach((p,i)=>{const o=3+i*3,cs=`q ${W} 0 0 ${H} 0 0 cm /Im0 Do Q`;
+    obj(o,()=>put(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /XObject << /Im0 ${o+1} 0 R >> >> /Contents ${o+2} 0 R >>`));
+    obj(o+1,()=>{put(`<< /Type /XObject /Subtype /Image /Width ${p.w} /Height ${p.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${p.bytes.length} >>\nstream\n`);put(p.bytes);put('\nendstream')});
+    obj(o+2,()=>put(`<< /Length ${cs.length} >>\nstream\n${cs}\nendstream`));
+  });
+  const n=3+pages.length*3,x=len;
+  put(`xref\n0 ${n}\n0000000000 65535 f \n${offs.slice(1).map(o=>String(o).padStart(10,'0')+' 00000 n \n').join('')}trailer\n<< /Size ${n} /Root 1 0 R >>\nstartxref\n${x}\n%%EOF\n`);
+  return new Blob(chunks,{type:'application/pdf'});
+}
+async function buildPdf(items){
+  const W=595,H=842,S=2,M=56,CW=W-2*M,c=document.createElement('canvas'),g=c.getContext('2d');c.width=W*S;c.height=H*S;
+  const SANS='"Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif',SERIF='"Gowun Batang","AppleMyungjo","Nanum Myeongjo",serif';
+  const [t1,t2]=exportTitle(items.length),all=t1+t2+items.map(i=>i.head+i.caption).join(''),cards=items.map(i=>i.card||'').join('')||'가';
+  // 쓰인 글자가 든 글꼴 조각만 받아 와요. 오프라인이면 휴대폰 기본 한글 글꼴로 그려요.
+  try{await Promise.race([Promise.all([`400 12px ${SANS}`,`700 12px ${SANS}`].map(f=>document.fonts.load(f,all)).concat(document.fonts.load(`400 12px ${SERIF}`,cards))),new Promise(r=>setTimeout(r,5000))])}catch(e){}
+  const pages=[];let y=0,no=0;
+  const begin=()=>{g.setTransform(S,0,0,S,0,0);g.fillStyle='#FFFFFF';g.fillRect(0,0,W,H);y=M;no++};
+  const finish=()=>{g.font=`400 9px ${SANS}`;g.fillStyle='#9A9DAA';g.textAlign='center';g.fillText(String(no),W/2,H-28);g.textAlign='left';
+    pages.push({bytes:dataBytes(c.toDataURL('image/jpeg',0.9)),w:c.width,h:c.height})};
+  const room=h=>{if(y+h>H-M&&y>M){finish();begin()}};
+  const wrap=(t,maxW)=>{const out=[];for(const para of t.split('\n')){let line='';
+    for(let tok of para.match(/\S+\s*|\s+/g)||['']){
+      if(g.measureText(line+tok).width<=maxW){line+=tok;continue}
+      if(line.trim()){out.push(line.trimEnd());line=''}
+      if(g.measureText(tok).width<=maxW){line=tok;continue}
+      for(const ch of tok){if(line&&g.measureText(line+ch).width>maxW){out.push(line);line=ch}else line+=ch}
+    }out.push(line.trimEnd())}return out};
+  const text=(t,font,color,lh)=>{g.font=font;for(const l of wrap(t,CW)){room(lh);g.fillStyle=color;g.font=font;g.fillText(l,M,y+lh*0.72);y+=lh}};
+  begin();
+  text(t1,`700 20px ${SANS}`,'#16171D',30);text(t2,`400 11px ${SANS}`,'#6B6F80',18);y+=22;
+  for(const it of items){
+    // 날짜만 페이지 끝에 홀로 남지 않게, 사진·카드가 들어갈 자리까지 함께 확인해요
+    const im=it.photo?await loadImg(it.photo):null;let w=CW,h=0;
+    if(im){h=w*im.naturalHeight/im.naturalWidth;const max=H*0.62;if(h>max){h=max;w=h*im.naturalWidth/im.naturalHeight}}
+    const pc=PALETTE[it.bg]||PALETTE[0],n=(it.card||'').length,size=n<=12?28:n<=30?22:n<=60?18:15,lh=size*1.55,font=`400 ${size}px ${SERIF}`;
+    g.font=font;const lines=it.card?wrap(it.card,CW-56):[],bh=Math.max(CW*0.62,lines.length*lh+64);
+    room(22+(im?h:it.card!==null?bh:40));text(it.head,`400 10px ${SANS}`,'#6B6F80',16);y+=6;
+    if(it.photo){
+      if(im){room(h);g.drawImage(im,M+(CW-w)/2,y,w,h);y+=h+12}
+      else text('[사진]',`400 12px ${SANS}`,'#6B6F80',20)}
+    if(it.card!==null){
+      room(bh);g.fillStyle=pc.bg;g.beginPath();const r=10,x0=M,x1=M+CW,y0=y,y1=y+bh;
+      g.moveTo(x0+r,y0);g.arcTo(x1,y0,x1,y1,r);g.arcTo(x1,y1,x0,y1,r);g.arcTo(x0,y1,x0,y0,r);g.arcTo(x0,y0,x1,y0,r);g.closePath();g.fill();
+      if(pc.bg==='#FFFFFF'){g.strokeStyle='#E1E3EA';g.lineWidth=1;g.stroke()}
+      g.fillStyle=pc.fg;g.font=font;g.textAlign='center';let ty=y+(bh-lines.length*lh)/2;
+      for(const l of lines){g.fillText(l,M+CW/2,ty+lh*0.7);ty+=lh}g.textAlign='left';y+=bh+12}
+    if(it.caption)text(it.caption,`400 12px ${SANS}`,'#16171D',20);
+    y+=14;if(y<H-M){g.fillStyle='#E1E3EA';g.fillRect(M,y,CW,0.75)}y+=24;
+  }
+  finish();
+  return pdfBlob(pages,W,H);
+}
+
+/* 아이폰은 공유 창('파일에 저장' · 카카오톡 등), 안드로이드는 다운로드 폴더로 저장해요.
+   만드는 데 시간이 걸려 공유 창이 막히면, 버튼을 한 번 더 눌러 저장하게 해요. */
+let readyFile=null;
+function deliverExport(file){
+  if(ANDROID||!(navigator.canShare&&navigator.canShare({files:[file]}))){saveBlob(file);toast(ANDROID?'다운로드 폴더에 저장했어요':'파일을 저장했어요');return}
+  navigator.share({files:[file],title:file.name}).catch(e=>{
+    if(e&&e.name==='AbortError')return;
+    if(e&&e.name==='NotAllowedError'){readyFile=file;$('exReady').hidden=false;return}
+    saveBlob(file)});
+}
+async function runExport(kind,btn){
+  const items=exportItems();if(!items.length){toast('내보낼 글이 아직 없어요');return}
+  const btns=['exPdf','exDocx','exTxt'].map($),label=btn.textContent;
+  btns.forEach(b=>b.disabled=true);btn.textContent='만드는 중…';$('exReady').hidden=true;readyFile=null;
+  try{
+    const file=kind==='txt'?new File([buildTxt(items)],exportName('txt'),{type:'text/plain'})
+      :kind==='docx'?new File([await buildDocx(items)],exportName('docx'),{type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'})
+      :new File([await buildPdf(items)],exportName('pdf'),{type:'application/pdf'});
+    deliverExport(file);
+  }catch(e){console.error(e);toast('파일을 만들지 못했어요. 다시 한 번 눌러 주세요.')}
+  finally{btns.forEach(b=>b.disabled=false);btn.textContent=label}
+}
+$('exPdf').onclick=e=>runExport('pdf',e.currentTarget);
+$('exDocx').onclick=e=>runExport('docx',e.currentTarget);
+$('exTxt').onclick=e=>runExport('txt',e.currentTarget);
+$('exReady').onclick=()=>{const f=readyFile;readyFile=null;$('exReady').hidden=true;if(f)deliverExport(f)};
+if(ANDROID)$('exHelp').textContent="지금까지 쓴 글을 오래된 순서대로 한 파일에 모아요. 사진은 PDF와 워드 파일에 함께 들어가요. 파일은 '내 파일 → 다운로드' 폴더에 저장돼요. 읽고 출력하고 나누기 위한 파일이라, 기록을 되살릴 때는 위의 백업 파일을 써 주세요.";
 
 /* 시작: 저장된 기록 불러오기(이전 버전 기록은 자동으로 옮김) */
 async function boot(){
