@@ -122,6 +122,7 @@ svg{display:block}
 .bk-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .bk-btn{height:48px;border-radius:12px;background:var(--ink);color:var(--bg);font-weight:700;display:grid;place-items:center;font-size:15px;cursor:pointer}
 .bk-btn.ghost{background:var(--bg);color:var(--ink);border:1px solid var(--line)}
+.bk-row .bk-wide{grid-column:1/-1}
 .profile-body{padding-bottom:12px}
 input[type=text]{width:100%;font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px}
 input[type=text]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -349,9 +350,10 @@ textarea::placeholder{color:var(--muted)}
       <div class="bk-row">
         <button class="bk-btn" id="bkExport">백업 파일 저장</button>
         <label class="bk-btn ghost" for="bkFile" role="button" tabindex="0" id="bkImportLabel">백업 불러오기</label>
+        <button class="bk-btn ghost bk-wide" id="bkSend" hidden>Google 드라이브·카카오톡으로 보내기</button>
       </div>
-      <input type="file" id="bkFile" accept="application/json,.json" hidden>
-      <p class="p-note">'백업 파일 저장'을 누르고 '파일에 저장'을 고르면 iCloud Drive나 아이폰에 보관돼요. 휴대폰을 바꾸거나 앱을 지웠을 때 '백업 불러오기'로 되살릴 수 있어요. 불러온 기록은 지금 기록에 합쳐져요.</p>
+      <input type="file" id="bkFile" accept="application/json,.json,text/plain,.txt" hidden>
+      <p class="p-note" id="bkHelp">'백업 파일 저장'을 누르고 '파일에 저장'을 고르면 iCloud Drive나 아이폰에 보관돼요. 휴대폰을 바꾸거나 앱을 지웠을 때 '백업 불러오기'로 되살릴 수 있어요. 불러온 기록은 지금 기록에 합쳐져요.</p>
     </section>
   </div>
 </section>
@@ -450,7 +452,7 @@ const putKV=(k,v)=>tx('kv','readwrite',s=>s.put(v,k));
 const getAllPosts=()=>tx('posts','readonly',s=>s.getAll());
 const putPosts=list=>tx('posts','readwrite',s=>{list.forEach(p=>s.put(p))});
 function savePost(p){return tx('posts','readwrite',s=>s.put(p)).then(()=>true,()=>false)}
-function persistPost(p){savePost(p).then(ok=>{if(!ok)toast('저장하지 못했어요. 아이폰 저장 공간을 확인해 주세요.')})}
+function persistPost(p){savePost(p).then(ok=>{if(!ok)toast('저장하지 못했어요. 휴대폰 저장 공간을 확인해 주세요.')})}
 function removePost(id){tx('posts','readwrite',s=>s.delete(id)).catch(()=>toast('삭제를 저장하지 못했어요. 다시 시도해 주세요.'))}
 function saveProfiles(){return putKV('profiles',{profiles,activeId}).then(()=>true,()=>false)}
 function saveMeta(){return putKV('meta',meta).catch(()=>{})}
@@ -626,7 +628,7 @@ $('share').onclick=async()=>{
   const p={id:'p'+Date.now(),type:mode,caption:$('caption').value.trim(),likes:0,liked:false,saved:false,createdAt:Date.now(),comments:[],authorId:activeId,authorName:active().name};
   if(mode==='photo'){p.img=draftImg;p.ratio=draftRatio}else{p.text=$('cardInput').value.trim();p.bg=draftBg}
   $('share').disabled=true;
-  if(!(await savePost(p))){validate();toast('저장하지 못했어요. 아이폰 저장 공간을 확인해 주세요.');return}
+  if(!(await savePost(p))){validate();toast('저장하지 못했어요. 휴대폰 저장 공간을 확인해 주세요.');return}
   posts.unshift(p);
   const share=online.ready&&$('shareToggle').checked;
   hide();setView('all');window.scrollTo({top:0,behavior:'smooth'});toast('게시물을 올렸어요');
@@ -733,7 +735,7 @@ async function sendComment(){
   if(parent){into=parent.replies;openReplies.add(parent.id)}else{c.replies=[];into=p.comments}
   into.push(c);
   $('cSend').disabled=true;
-  if(!(await savePost(p))){into.pop();growInput();toast('댓글을 저장하지 못했어요. 아이폰 저장 공간을 확인해 주세요.');return}
+  if(!(await savePost(p))){into.pop();growInput();toast('댓글을 저장하지 못했어요. 휴대폰 저장 공간을 확인해 주세요.');return}
   $('cInput').value='';growInput();setReply(null);renderComments();render();flashComment(c.id);
 }
 function flashComment(id){
@@ -798,7 +800,7 @@ $('pSave').onclick=async()=>{
   const name=$('pName').value.trim()||(editId?getProfile(editId).name:`프로필 ${profiles.length+1}`);
   if(editId)Object.assign(getProfile(editId),{name,color:pDraft.color,photo:pDraft.photo});
   else{const np={id:'u'+Date.now(),name,color:pDraft.color,photo:pDraft.photo};profiles.push(np);activeId=np.id}
-  if(!(await saveProfiles())){profiles=JSON.parse(backup);activeId=backupActive;toast('저장하지 못했어요. 아이폰 저장 공간을 확인해 주세요.');return}
+  if(!(await saveProfiles())){profiles=JSON.parse(backup);activeId=backupActive;toast('저장하지 못했어요. 휴대폰 저장 공간을 확인해 주세요.');return}
   paintMe();render();renderPM();syncMe();swap($('pmSheet'));toast(editId?'프로필을 저장했어요':`'${name}' 프로필을 만들었어요`);
 };
 $('pDelete').onclick=()=>{
@@ -969,7 +971,7 @@ async function sharePost(p){
     if(n)await b.commit();
   }catch(e){fb.deleteDoc(ref).catch(()=>{});return false}
   p.shared=true;p.sharedId=id;p.comments=[];
-  if(!(await savePost(p)))toast('저장하지 못했어요. 아이폰 저장 공간을 확인해 주세요.');
+  if(!(await savePost(p)))toast('저장하지 못했어요. 휴대폰 저장 공간을 확인해 주세요.');
   watchComments(p);repaint();return true;
 }
 async function deleteRemote(id){
@@ -1094,35 +1096,58 @@ let tt;function toast(m){const t=$('toast');t.textContent=m;t.classList.add('on'
 /* 백업 내보내기 · 불러오기 */
 const pad=n=>String(n).padStart(2,'0');
 function fmtDate(t){const d=new Date(t);return `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일`}
+/* 안드로이드 크롬은 .json 파일을 공유 창으로 못 보내고, 파일 고르기에서 형식이 다르면 흐리게 막아 버려요.
+   그래서 안드로이드에서는 저장(다운로드 폴더)과 보내기(.txt로 공유)를 나눠 두고, 불러올 때는 모든 파일을 고를 수 있게 해요. */
+const ANDROID=/Android/i.test(navigator.userAgent);
+if(ANDROID){
+  $('bkExport').textContent='휴대폰에 저장';
+  $('bkSend').hidden=false;
+  $('bkFile').removeAttribute('accept');
+  $('bkHelp').textContent="'휴대폰에 저장'을 누르면 '내 파일 → 다운로드' 폴더에 백업 파일이 생겨요. 휴대폰을 잃어버려도 안전하려면 'Google 드라이브·카카오톡으로 보내기'로 드라이브나 '나와의 채팅'에 한 부 더 보관해 두세요. 되살릴 때는 '백업 불러오기'에서 그 파일을 고르면 되고, 불러온 기록은 지금 기록에 합쳐져요.";
+}
 function paintBackup(){
   const lb=meta.lastBackup, days=lb?Math.floor((Date.now()-lb)/864e5):Infinity;
   $('bkInfo').textContent=lb?`마지막 백업: ${fmtDate(lb)}${days>0?` (${days}일 전)`:' (오늘)'}`:'아직 백업한 적이 없어요.';
-  const need=posts.filter(p=>!p.sample).length>=3&&days>=30;
+  const real=posts.filter(p=>!p.sample), fresh=lb?real.filter(p=>p.createdAt>lb).length:real.length;
+  const need=real.length>=3&&(days>=30||(fresh>=10&&days>=1));
   $('nudge').hidden=!need;
-  if(need)$('nudgeText').textContent=lb?`마지막 백업 후 ${days}일이 지났어요`:'기록을 아직 백업하지 않았어요';
+  if(need)$('nudgeText').textContent=!lb?'기록을 아직 백업하지 않았어요':days>=30?`마지막 백업 후 ${days}일이 지났어요`:`백업 후 새 게시물이 ${fresh}개 늘었어요`;
 }
-function markBackup(){meta.lastBackup=Date.now();saveMeta();paintBackup();toast('백업 파일을 저장했어요')}
+function markBackup(msg){meta.lastBackup=Date.now();saveMeta();paintBackup();toast(msg||'백업 파일을 저장했어요')}
 function downloadFile(file){
   const u=URL.createObjectURL(file),a=document.createElement('a');
   a.href=u;a.download=file.name;document.body.appendChild(a);a.click();a.remove();
-  setTimeout(()=>URL.revokeObjectURL(u),10000);markBackup();
+  setTimeout(()=>URL.revokeObjectURL(u),10000);
+  markBackup(ANDROID?'다운로드 폴더에 백업 파일을 저장했어요':'');
+}
+function backupFile(ext,type){
+  const d=new Date(), name=`hanjang-backup-${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}.${ext}`;
+  const json=JSON.stringify({app:'hanjang',version:1,exportedAt:Date.now(),activeId,profiles,posts});
+  return new File([json],name,{type});
+}
+function shareFile(file,fallback){
+  if(navigator.canShare&&navigator.canShare({files:[file]})){
+    navigator.share({files:[file],title:file.name}).then(()=>markBackup()).catch(e=>{if(e&&e.name==='AbortError')return;fallback()});
+  }else fallback();
 }
 function exportBackup(){
-  const d=new Date(), name=`hanjang-backup-${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}.json`;
-  const json=JSON.stringify({app:'hanjang',version:1,exportedAt:Date.now(),activeId,profiles,posts});
-  const file=new File([json],name,{type:'application/json'});
-  if(navigator.canShare&&navigator.canShare({files:[file]})){
-    navigator.share({files:[file]}).then(markBackup).catch(e=>{if(e&&e.name==='AbortError')return;downloadFile(file)});
-  }else downloadFile(file);
+  const file=backupFile('json','application/json');
+  if(ANDROID)downloadFile(file);else shareFile(file,()=>downloadFile(file));
+}
+/* 안드로이드 공유 창은 .txt만 받아 줘서, 내용은 같고 이름만 .txt인 백업을 보내요 */
+function sendBackup(){
+  const file=backupFile('txt','text/plain');
+  shareFile(file,()=>{toast('이 휴대폰에서는 바로 보낼 수 없어서 다운로드 폴더에 저장할게요');downloadFile(backupFile('json','application/json'))});
 }
 $('bkExport').onclick=exportBackup;
-$('nudge').onclick=exportBackup;
+$('bkSend').onclick=sendBackup;
+$('nudge').onclick=()=>{if(ANDROID){renderPM();paintBackup();show($('pmSheet'))}else exportBackup()};
 $('bkImportLabel').addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();$('bkFile').click()}});
 $('bkFile').addEventListener('change',async e=>{
   const f=e.target.files[0];e.target.value='';if(!f)return;
   let data;
   try{data=JSON.parse(await f.text());if(data.app!=='hanjang'||!Array.isArray(data.posts))throw new Error('format')}
-  catch(err){toast('한 장 백업 파일이 아니에요. hanjang-backup으로 시작하는 파일을 골라 주세요.');return}
+  catch(err){toast('한 장 백업 파일이 아니에요. hanjang-backup으로 시작하는 파일(.json 또는 .txt)을 골라 주세요.');return}
   if(Array.isArray(data.profiles)){
     const pm=new Map(profiles.map(p=>[p.id,p]));
     data.profiles.forEach(p=>{if(p&&p.id)pm.set(p.id,p)});
@@ -1131,7 +1156,7 @@ $('bkFile').addEventListener('change',async e=>{
   }
   const incoming=normalize(data.posts.filter(p=>p&&p.id));
   try{await putPosts(incoming);await saveProfiles()}
-  catch(err){toast('불러오는 중에 저장 공간이 부족했어요. 아이폰 저장 공간을 확인해 주세요.');return}
+  catch(err){toast('불러오는 중에 저장 공간이 부족했어요. 휴대폰 저장 공간을 확인해 주세요.');return}
   const map=new Map(posts.map(p=>[p.id,p]));incoming.forEach(p=>map.set(p.id,p));
   posts=[...map.values()].sort((a,b)=>b.createdAt-a.createdAt);
   paintMe();render();renderPM();toast(`게시물 ${incoming.length}개를 불러왔어요`);
