@@ -64,6 +64,13 @@ service cloud.firestore {
           && request.resource.data.authorId == me()
           && request.resource.data.text is string
           && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 1000;
+        // 쓴 사람만 글 내용을 고칠 수 있어요(글쓴이 · 시간 · 답글 위치는 바꿀 수 없어요)
+        allow update: if canSee(postOwner())
+          && resource.data.authorId == me()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'editedAt'])
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 1000
+          && request.resource.data.editedAt is number;
         // 쓴 사람이나 게시물 주인이 지울 수 있어요
         allow delete: if signedIn() && (resource.data.authorId == me() || postOwner() == me());
       }
