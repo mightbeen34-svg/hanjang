@@ -1,0 +1,72 @@
+rules_version = '2';
+// 한 장 — 친구 기능 보안 규칙
+// Firebase 콘솔 > Firestore Database > 규칙(Rules) 탭에 이 파일 내용을 그대로 붙여 넣고 '게시'를 눌러 주세요.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function me() { return request.auth.uid; }
+    function pairId(a, b) { return a < b ? a + '_' + b : b + '_' + a; }
+    // 친구 신청을 서로 수락한 사이인지
+    function isFriend(other) {
+      let path = /databases/$(database)/documents/friendships/$(pairId(me(), other));
+      return other != me() && exists(path) && get(path).data.status == 'accepted';
+    }
+    function canSee(ownerId) { return signedIn() && (ownerId == me() || isFriend(ownerId)); }
+
+    // 친구에게 보이는 이름과 사진
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow write: if signedIn() && uid == me()
+        && request.resource.data.name is string && request.resource.data.name.size() <= 20;
+    }
+
+    // 친구 코드 → 사용자
+    match /codes/{code} {
+      allow get: if signedIn();
+      allow create: if signedIn() && request.resource.data.uid == me() && code.size() == 6;
+      allow delete: if signedIn() && resource.data.uid == me();
+    }
+
+    // 친구 관계: 문서 이름은 두 사람 id를 사전순으로 '_'로 이은 것
+    match /friendships/{fid} {
+      allow get: if signedIn() && me() in fid.split('_');
+      allow list: if signedIn() && me() in resource.data.members;
+      allow create: if signedIn()
+        && request.resource.data.from == me()
+        && request.resource.data.to != me()
+        && request.resource.data.status == 'pending'
+        && fid == pairId(me(), request.resource.data.to)
+        && request.resource.data.members == (me() < request.resource.data.to
+             ? [me(), request.resource.data.to] : [request.resource.data.to, me()]);
+      // 신청 받은 사람만 수락할 수 있어요
+      allow update: if signedIn() && resource.data.to == me()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'acceptedAt'])
+        && request.resource.data.status == 'accepted';
+      // 신청 취소 · 거절 · 친구 끊기
+      allow delete: if signedIn() && me() in resource.data.members;
+    }
+
+    // 친구에게 공개한 게시물
+    match /posts/{postId} {
+      allow read: if canSee(resource.data.ownerId);
+      allow create: if signedIn() && request.resource.data.ownerId == me()
+        && postId.matches(me() + '_.*');
+      allow update: if signedIn() && resource.data.ownerId == me()
+        && request.resource.data.ownerId == me();
+      allow delete: if signedIn() && resource.data.ownerId == me();
+
+      function postOwner() { return get(/databases/$(database)/documents/posts/$(postId)).data.ownerId; }
+
+      // 댓글 · 대댓글 (parentId가 있으면 대댓글)
+      match /comments/{cid} {
+        allow read: if canSee(postOwner());
+        allow create: if canSee(postOwner())
+          && request.resource.data.authorId == me()
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 1000;
+        // 쓴 사람이나 게시물 주인이 지울 수 있어요
+        allow delete: if signedIn() && (resource.data.authorId == me() || postOwner() == me());
+      }
+    }
+  }
+}
