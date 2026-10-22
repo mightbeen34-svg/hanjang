@@ -291,12 +291,12 @@ textarea::placeholder{color:var(--muted)}
 <section class="sheet compose" id="compose" aria-label="새 게시물" aria-hidden="true">
   <div class="sheet-bar">
     <button class="left" id="cancel">취소</button>
-    <h2>새 게시물</h2>
+    <h2 id="composeTitle">새 게시물</h2>
     <button class="right" id="share" disabled>공유</button>
   </div>
   <div class="compose-body">
     <div class="who-row" id="composeWho"></div>
-    <div class="seg" role="group" aria-label="게시물 종류">
+    <div class="seg" id="modeSeg" role="group" aria-label="게시물 종류">
       <button id="modePhoto" aria-pressed="true">사진</button>
       <button id="modeText" aria-pressed="false">글 카드</button>
     </div>
@@ -397,6 +397,7 @@ textarea::placeholder{color:var(--muted)}
   <div class="action">
     <div class="grab"></div>
     <p id="actionTitle">게시물 메뉴</p>
+    <button id="editPost">수정</button>
     <button id="copyCaption">문구 복사</button>
     <button id="toggleShare" hidden>친구에게 공개</button>
     <button class="danger" id="deletePost">삭제</button>
@@ -478,7 +479,7 @@ function samples(){return [
   {id:'s3',type:'text',text:'',bg:4,caption:'',likes:1,liked:false,saved:false,createdAt:now-50*H,sample:true,comments:[]}
 ];}
 
-let posts=[], view='all', mode='photo', draftImg=null, draftRatio=1, draftBg=1, menuId=null;
+let posts=[], view='all', mode='photo', draftImg=null, draftRatio=1, draftBg=1, menuId=null, editPostId=null;
 
 function normalize(list){const first=profiles[0].id;
   const fix=c=>{if(!c.authorId&&(c.mine||c.name==='나'))c.authorId=first;return c};
@@ -507,7 +508,7 @@ function render(){
   <article class="post" data-id="${p.id}">
     <header class="post-head">
       ${a.av}
-      <div class="who"><b>${esc(a.name)}${p.sample?'<span class="chip">예시</span>':''}${p.shared?'<span class="chip">친구 공개</span>':''}</b><span>${ago(p.createdAt)}</span></div>
+      <div class="who"><b>${esc(a.name)}${p.sample?'<span class="chip">예시</span>':''}${p.shared?'<span class="chip">친구 공개</span>':''}</b><span>${ago(p.createdAt)}${p.editedAt?' · 수정됨':''}</span></div>
       <button class="icon-btn" data-act="menu" aria-label="게시물 메뉴">${DOTS}</button>
     </header>
     <div class="media" data-act="media" ${p.type==='photo'?`style="aspect-ratio:${p.ratio||1}"`:''}>
@@ -577,10 +578,13 @@ function hide(){if(!openSheet)return;openSheet.classList.remove('on');openSheet.
 $('scrim').onclick=()=>{if(openSheet===$('compose')&&dirty()){toast('작성 중인 글이 있어요. 취소를 눌러 닫아 주세요.');return}hide()};
 
 /* 작성 */
-function dirty(){return draftImg||$('caption').value.trim()||$('cardInput').value.trim()}
+function dirty(){
+  if(editPostId){const p=find(editPostId);return !!p&&($('caption').value.trim()!==(p.caption||'')||(p.type==='text'&&($('cardInput').value.trim()!==(p.text||'')||draftBg!==(p.bg||0))))}
+  return draftImg||$('caption').value.trim()||$('cardInput').value.trim()}
 function resetDraft(){draftImg=null;draftRatio=1;draftBg=1;$('caption').value='';$('cardInput').value='';$('file').value='';setMode('photo');updateCount()}
 let cancelArmed=false;
-$('openCompose').onclick=()=>{resetDraft();cancelArmed=false;$('cancel').textContent='취소';
+function composeFor(id){editPostId=id;$('composeTitle').textContent=id?'게시물 수정':'새 게시물';$('share').textContent=id?'완료':'공유';$('modeSeg').hidden=!!id}
+$('openCompose').onclick=()=>{composeFor(null);paintMe();resetDraft();cancelArmed=false;$('cancel').textContent='취소';
   $('shareRow').hidden=!online.ready;$('shareToggle').checked=meta.shareDefault!==false;show($('compose'))};
 $('shareToggle').onchange=()=>{meta.shareDefault=$('shareToggle').checked;saveMeta()};
 $('cancel').onclick=()=>{
@@ -599,7 +603,7 @@ function drawPreview(){
   if(mode==='text'){const v=$('cardInput').value;
     $('preview').innerHTML=v.trim()?cardHTML(v,draftBg):cardHTML('문구 없이 색만 올려도 돼요',draftBg,true);return}
   $('preview').innerHTML=draftImg
-    ?`<div style="aspect-ratio:${draftRatio}"><img src="${draftImg}" alt="선택한 사진" style="width:100%;height:100%;object-fit:cover;display:block"></div><label class="repick" for="file">다시 선택</label>`
+    ?`<div style="aspect-ratio:${draftRatio}"><img src="${draftImg}" alt="선택한 사진" style="width:100%;height:100%;object-fit:cover;display:block"></div>${editPostId?'':'<label class="repick" for="file">다시 선택</label>'}`
     :`<label class="pick" for="file"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-8 9"/></svg><b>사진 선택</b>앨범에서 고르거나 바로 촬영하세요</label>`;
 }
 $('cardInput').addEventListener('input',()=>{drawPreview();validate()});
@@ -625,6 +629,7 @@ function validate(){const n=$('caption').value.length;const ok=n<=MAX_CAP&&(mode
 $('caption').addEventListener('input',()=>{updateCount();validate()});
 
 $('share').onclick=async()=>{
+  if(editPostId){saveEdit();return}
   const p={id:'p'+Date.now(),type:mode,caption:$('caption').value.trim(),likes:0,liked:false,saved:false,createdAt:Date.now(),comments:[],authorId:activeId,authorName:active().name};
   if(mode==='photo'){p.img=draftImg;p.ratio=draftRatio}else{p.text=$('cardInput').value.trim();p.bg=draftBg}
   $('share').disabled=true;
@@ -635,10 +640,33 @@ $('share').onclick=async()=>{
   if(share&&!(await sharePost(p)))toast('친구 공개는 하지 못했어요. 게시물 메뉴에서 다시 공개할 수 있어요.');
 };
 
+/* 게시물 수정: 사진은 그대로 두고 문구(글 카드는 카드 문구 · 배경색까지)만 고쳐요 */
+function openEditPost(id){
+  const p=find(id);if(!p||p.remote)return;
+  composeFor(id);cancelArmed=false;$('cancel').textContent='취소';$('shareRow').hidden=true;
+  const a=postAuthor(p);$('composeWho').innerHTML=a.av+`<span><small>글쓴이</small>${esc(a.name)}</span>`;
+  draftImg=p.type==='photo'?p.img:null;draftRatio=p.ratio||1;draftBg=p.bg||0;
+  $('caption').value=p.caption||'';$('cardInput').value=p.text||'';$('file').value='';
+  setMode(p.type);updateCount();swap($('compose'));
+}
+async function saveEdit(){
+  const p=find(editPostId);if(!p){hide();return}
+  if(!dirty()){hide();return}
+  const before={caption:p.caption,text:p.text,bg:p.bg,editedAt:p.editedAt,syncPending:p.syncPending};
+  p.caption=$('caption').value.trim();
+  if(p.type==='text'){p.text=$('cardInput').value.trim();p.bg=draftBg}
+  p.editedAt=Date.now();if(p.shared)p.syncPending=true;
+  $('share').disabled=true;
+  if(!(await savePost(p))){Object.assign(p,before);validate();toast('저장하지 못했어요. 휴대폰 저장 공간을 확인해 주세요.');return}
+  hide();render();
+  if(p.shared&&!(await pushEdit(p))){toast('이 기기에는 고쳤어요. 친구에게 보이는 글은 인터넷이 연결되면 바꿔 둘게요.');return}
+  toast('게시물을 고쳤어요');
+}
+
 /* 메뉴 / 삭제 */
 let delArmed=false;
 function openMenu(id){menuId=id;delArmed=false;$('deletePost').textContent='삭제';$('actionTitle').textContent='게시물 메뉴';
-  const p=find(id);$('copyCaption').hidden=!p.caption;$('deletePost').hidden=!!p.remote;
+  const p=find(id);$('copyCaption').hidden=!p.caption;$('deletePost').hidden=!!p.remote;$('editPost').hidden=!!p.remote;
   $('toggleShare').hidden=p.remote||p.sample||!online.ready;$('toggleShare').textContent=p.shared?'친구 공개 취소':'친구에게 공개';
   show($('actionSheet'))}
 $('toggleShare').onclick=async()=>{
@@ -647,6 +675,7 @@ $('toggleShare').onclick=async()=>{
   else toast((await sharePost(p))?'친구에게 공개했어요':'공개하지 못했어요. 인터넷 연결을 확인해 주세요.');
 };
 $('closeAction').onclick=hide;
+$('editPost').onclick=()=>openEditPost(menuId);
 $('deletePost').onclick=()=>{
   if(!delArmed){delArmed=true;$('deletePost').textContent='삭제하기 — 되돌릴 수 없어요';$('actionTitle').textContent='이 게시물을 정말 삭제할까요?';return}
   const gone=find(menuId);if(gone&&gone.shared)removeShared(gone);
@@ -660,20 +689,21 @@ $('copyCaption').onclick=()=>{
 };
 
 /* 댓글 · 대댓글 */
-let cPostId=null, replyTo=null, openReplies=new Set(), delArmedC=null, delTimer;
+let cPostId=null, replyTo=null, editC=null, openReplies=new Set(), delArmedC=null, delTimer;
 function openComments(id,focus){
   if(cPostId!==id){$('cInput').value='';openReplies=new Set()}
   cPostId=id;setReply(null);renderComments();show($('commentsSheet'));
   if(focus)$('cInput').focus();
 }
-function commentHTML(c,parentId,canDel=true){
+function commentHTML(c,parentId,canDel=true,canEdit=false){
   const isReply=!!parentId, armed=delArmedC===c.id;
   return `<div class="c ${isReply?'reply':''}" data-cid="${c.id}" data-parent="${parentId||''}">
     ${cAuthor(c).av}
     <div class="c-body">
       <div class="c-text"><b>${esc(cAuthor(c).name)}</b>${rich(c.text)}</div>
-      <div class="c-meta"><span>${ago(c.createdAt)}</span>
+      <div class="c-meta"><span>${ago(c.createdAt)}${c.editedAt?' · 수정됨':''}</span>
         <button data-cact="reply">답글 달기</button>
+        ${canEdit?'<button data-cact="edit">수정</button>':''}
         ${canDel?`<button data-cact="del" class="${armed?'armed':''}">${armed?'한 번 더 누르면 삭제':'삭제'}</button>`:''}
       </div>
     </div>
@@ -682,15 +712,17 @@ function commentHTML(c,parentId,canDel=true){
 function renderComments(){
   const p=find(cPostId);if(!p)return;
   const n=countComments(p);$('cTitle').textContent=n?`댓글 ${n}`:'댓글';
-  const list=threadOf(p),can=c=>canDeleteComment(p,c);
+  const list=threadOf(p),row=(c,parentId)=>commentHTML(c,parentId,canDeleteComment(p,c),canEditComment(p,c));
   if(!list.length){$('cList').innerHTML=`<div class="c-empty"><strong>아직 댓글이 없어요</strong>${p.remote?'친구 글에 첫 댓글을 남겨 보세요.':p.shared?'친구에게 공개된 글이에요. 친구들의 댓글이 여기에 모여요.':'아래 입력칸에 첫 댓글을 남겨 보세요.'}</div>`;return}
   $('cList').innerHTML=list.map(c=>{
     const open=openReplies.has(c.id), r=c.replies.length;
-    return commentHTML(c,null,can(c))+(r?`<button class="toggle-replies" data-toggle="${c.id}">${open?'답글 숨기기':`답글 ${r}개 보기`}</button>`:'')
-      +(open&&r?`<div class="replies">${c.replies.map(x=>commentHTML(x,c.id,can(x))).join('')}</div>`:'');
+    return row(c,null)+(r?`<button class="toggle-replies" data-toggle="${c.id}">${open?'답글 숨기기':`답글 ${r}개 보기`}</button>`:'')
+      +(open&&r?`<div class="replies">${c.replies.map(x=>row(x,c.id)).join('')}</div>`:'');
   }).join('');
 }
 function setReply(target){
+  if(editC){editC=null;$('cInput').value='';growInput()}
+  $('cSend').textContent='게시';
   replyTo=target;$('replying').hidden=!target;
   if(target){$('replyingText').textContent=`${target.name}님에게 답글 남기는 중`;$('cInput').placeholder='답글 달기…'}
   else $('cInput').placeholder='댓글 달기…';
@@ -705,9 +737,12 @@ $('cList').addEventListener('click',e=>{
   if(b.dataset.cact==='reply'){
     // 대댓글에 답글을 달면 같은 댓글 묶음 아래에 붙어요(인스타그램 방식)
     setReply({parentId:parent.id,name:cAuthor(self).name});$('cInput').focus();
+  }else if(b.dataset.cact==='edit'){
+    setEdit({id:cid,parentId:parentId||null,text:self.text});
   }else if(b.dataset.cact==='del'){
     if(delArmedC!==cid){delArmedC=cid;renderComments();clearTimeout(delTimer);delTimer=setTimeout(()=>{delArmedC=null;renderComments()},3000);return}
     delArmedC=null;
+    if(editC&&(editC.id===cid||editC.parentId===cid))setReply(null);
     if(isOnlineThread(p)){
       if(!parentId&&replyTo&&replyTo.parentId===cid)setReply(null);
       deleteRemoteComment(p,self,parentId?[]:parent.replies).then(ok=>toast(ok?(parentId?'답글을 삭제했어요':'댓글을 삭제했어요'):'삭제하지 못했어요. 인터넷 연결을 확인해 주세요.'));
@@ -718,6 +753,29 @@ $('cList').addEventListener('click',e=>{
     persistPost(p);renderComments();render();toast(parentId?'답글을 삭제했어요':'댓글을 삭제했어요');
   }
 });
+// 내 댓글 고치기: 입력칸에 원래 글을 채워 두고, '수정'을 누르면 바꿔요
+function setEdit(t){
+  setReply(null);editC=t;$('replying').hidden=false;$('replyingText').textContent=t.parentId?'답글 수정 중':'댓글 수정 중';
+  $('cInput').placeholder='';$('cInput').value=t.text;growInput();$('cSend').textContent='수정';$('cInput').focus();
+}
+async function saveCommentEdit(){
+  const t=editC,p=find(cPostId),text=$('cInput').value.trim();if(!t||!p||!text)return;
+  const done=()=>{setReply(null);renderComments();render();flashComment(t.id)};
+  if(text===t.text){done();return}
+  if(isOnlineThread(p)){
+    const w=fb.updateDoc(fb.doc(fb.db,'posts',rid(p),'comments',t.id),{text,editedAt:Date.now()});
+    // 화면에는 바로 보이고, 실제 저장은 뒤에서 마쳐요
+    done();
+    try{await w}catch(e){toast('댓글을 고치지 못했어요. 인터넷 연결을 확인해 주세요.')}
+    return;
+  }
+  const top=p.comments.find(c=>c.id===(t.parentId||t.id)),c=top&&(t.parentId?top.replies.find(r=>r.id===t.id):top);
+  if(!c){setReply(null);renderComments();toast('이미 삭제된 댓글이에요');return}
+  const old={text:c.text,editedAt:c.editedAt};
+  c.text=text;c.editedAt=Date.now();$('cSend').disabled=true;
+  if(!(await savePost(p))){Object.assign(c,old);growInput();toast('댓글을 저장하지 못했어요. 휴대폰 저장 공간을 확인해 주세요.');return}
+  done();
+}
 $('cancelReply').onclick=()=>setReply(null);
 $('closeComments').onclick=hide;
 function growInput(){const t=$('cInput');t.style.height='auto';t.style.height=Math.min(t.scrollHeight+2,120)+'px';$('cSend').disabled=!t.value.trim()}
@@ -727,6 +785,7 @@ $('cInput').addEventListener('keydown',e=>{
 });
 $('cSend').onclick=sendComment;
 async function sendComment(){
+  if(editC){saveCommentEdit();return}
   const text=$('cInput').value.trim();if(!text)return;
   if(isOnlineThread(find(cPostId))){sendRemoteComment(text);return}
   const p=find(cPostId),c={id:'c'+Date.now(),authorId:activeId,authorName:active().name,text,createdAt:Date.now()};
@@ -832,13 +891,13 @@ const str=(s,n)=>typeof s==='string'?s.slice(0,n):'';
 function cleanUser(d){return {name:str(d.name,20)||'친구',color:okColor(d.color),photo:okPhoto(d.photo)}}
 function cleanPost(id,d){
   const p={id,remote:true,ownerId:str(d.ownerId,128),ownerName:str(d.ownerName,20),type:d.type==='photo'?'photo':'text',
-    caption:str(d.caption,MAX_CAP),createdAt:+d.createdAt||0,comments:[]};
+    caption:str(d.caption,MAX_CAP),createdAt:+d.createdAt||0,editedAt:+d.editedAt||0,comments:[]};
   if(p.type==='photo'){p.img=okImg(d.img);p.ratio=Math.min(1.91,Math.max(0.8,+d.ratio||1));if(!p.img)return null}
   else{p.text=str(d.text,120);p.bg=PALETTE[d.bg]?+d.bg:0}
   return p;
 }
 function cleanComment(id,d){return {id,authorUid:str(d.authorId,128),authorName:str(d.authorName,20),text:str(d.text,1000),
-  createdAt:+d.createdAt||0,parentId:typeof d.parentId==='string'?d.parentId:null}}
+  createdAt:+d.createdAt||0,editedAt:+d.editedAt||0,parentId:typeof d.parentId==='string'?d.parentId:null}}
 
 function remoteAuthor(uid,fallback){
   const u=uid===online.uid?online.me:friendsInfo.get(uid);
@@ -859,6 +918,8 @@ function threadOf(p){
     if(t)t.replies.push(c);else tops.set(c.id,{...c,parentId:null,replies:[]})}); // 원댓글이 지워진 답글은 그냥 댓글로 보여 줌
   return [...tops.values()].sort((a,b)=>a.createdAt-b.createdAt);
 }
+// 내가 쓴 댓글만 고칠 수 있어요(친구 댓글을 옮겨 온 것은 이름만 남아 있어서 고칠 수 없어요)
+function canEditComment(p,c){return isOnlineThread(p)?!!online.uid&&c.authorUid===online.uid:!!c.authorId}
 function canDeleteComment(p,c){
   if(!isOnlineThread(p))return true;
   return c.authorUid===online.uid||(!p.remote&&p.shared);
@@ -893,6 +954,7 @@ async function goOnline(){
     // 다른 기기(백업)에서 공개했던 글은 이 계정과 맞지 않으니 공개 표시를 풀어 둬요
     posts.forEach(p=>{if(p.shared&&!(p.sharedId||'').startsWith(user.uid+'_')){p.shared=false;delete p.sharedId;persistPost(p)}});
     posts.filter(p=>p.shared).forEach(watchComments);
+    posts.filter(p=>p.shared&&p.syncPending).forEach(pushEdit); // 연결이 끊긴 사이에 고친 글을 친구 쪽에도 반영
     watchFriendships();
   }catch(e){
     toast('친구 기능에 연결하지 못했어요. 인터넷 연결을 확인해 주세요.');
@@ -962,15 +1024,17 @@ async function sharePost(p){
   const id=online.uid+'_'+p.id,ref=fb.doc(fb.db,'posts',id);
   try{
     const d={ownerId:online.uid,ownerName:online.me.name,type:p.type,caption:p.caption||'',createdAt:p.createdAt};
+    if(p.editedAt)d.editedAt=p.editedAt;
     if(p.type==='photo'){d.img=await shrinkForShare(p.img);d.ratio=p.ratio||1}else{d.text=p.text||'';d.bg=p.bg||0}
     await fb.setDoc(ref,d);
     // 이 기기에서 달았던 댓글도 함께 올려요
     const b=fb.writeBatch(fb.db),col=fb.collection(fb.db,'posts',id,'comments');let n=0;
-    const put=(c,parentId)=>{b.set(fb.doc(col,c.id),{authorId:online.uid,authorName:cAuthor(c).name.slice(0,20),text:c.text,createdAt:c.createdAt,parentId});n++};
+    const put=(c,parentId)=>{const x={authorId:online.uid,authorName:cAuthor(c).name.slice(0,20),text:c.text,createdAt:c.createdAt,parentId};
+      if(c.editedAt)x.editedAt=c.editedAt;b.set(fb.doc(col,c.id),x);n++};
     p.comments.forEach(c=>{put(c,null);c.replies.forEach(r=>put(r,c.id))});
     if(n)await b.commit();
   }catch(e){fb.deleteDoc(ref).catch(()=>{});return false}
-  p.shared=true;p.sharedId=id;p.comments=[];
+  p.shared=true;p.sharedId=id;p.comments=[];delete p.syncPending;
   if(!(await savePost(p)))toast('저장하지 못했어요. 휴대폰 저장 공간을 확인해 주세요.');
   watchComments(p);repaint();return true;
 }
@@ -983,16 +1047,25 @@ async function unsharePost(p){
   if(!online.ready)return false;
   const id=p.sharedId;
   // 친구들이 남긴 댓글은 이 기기로 옮겨 와서 남겨 둬요
-  const kept=threadOf(p).map(c=>({id:c.id,name:remoteAuthor(c.authorUid,c.authorName).name,text:c.text,createdAt:c.createdAt,
-    replies:c.replies.map(r=>({id:r.id,name:remoteAuthor(r.authorUid,r.authorName).name,text:r.text,createdAt:r.createdAt}))}));
+  const keep=c=>({id:c.id,name:remoteAuthor(c.authorUid,c.authorName).name,text:c.text,createdAt:c.createdAt,...(c.editedAt?{editedAt:c.editedAt}:{})});
+  const kept=threadOf(p).map(c=>({...keep(c),replies:c.replies.map(keep)}));
   try{await deleteRemote(id)}catch(e){return false}
   unsub('comments:'+id);remoteComments.delete(id);
-  p.shared=false;delete p.sharedId;p.comments=kept;persistPost(p);repaint();return true;
+  p.shared=false;delete p.sharedId;delete p.syncPending;p.comments=kept;persistPost(p);repaint();return true;
 }
 function removeShared(p){
   if(!online.ready)return;
   unsub('comments:'+p.sharedId);remoteComments.delete(p.sharedId);
   deleteRemote(p.sharedId).catch(()=>toast('친구에게 공개된 글은 지우지 못했어요. 인터넷 연결을 확인해 주세요.'));
+}
+
+// 고친 문구를 친구에게 공개된 글에도 반영해요
+async function pushEdit(p){
+  if(!online.ready||!p.shared)return false;
+  const d={caption:p.caption||'',editedAt:p.editedAt||Date.now()};
+  if(p.type==='text'){d.text=p.text||'';d.bg=p.bg||0}
+  try{await fb.updateDoc(fb.doc(fb.db,'posts',p.sharedId),d)}catch(e){return false}
+  delete p.syncPending;persistPost(p);return true;
 }
 
 /* 온라인 댓글 쓰기 · 지우기 */
