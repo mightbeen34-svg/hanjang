@@ -87,6 +87,7 @@ svg{display:block}
 /* 프로필 시트 */
 .profile{top:calc(env(safe-area-inset-top,0px) + 10px);display:flex;flex-direction:column}
 .profile-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding-top:22px;display:flex;flex-direction:column;gap:22px;max-width:470px;width:100%;margin:0 auto}
+.profile-body>*,.compose-body>*{flex-shrink:0}
 .big{display:flex;flex-direction:column;align-items:center;gap:10px}
 .big .avatar{width:104px;height:104px;font-size:42px}
 .big .hint{font-size:13px;color:var(--muted)}
