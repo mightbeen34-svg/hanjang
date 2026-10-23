@@ -1,7 +1,7 @@
 // 한 장 — 오프라인에서도 앱이 열리도록 화면 파일을 보관해요.
 // 앱을 고쳐서 다시 올릴 때는 아래 VERSION 숫자를 하나 올려 주세요.
-const VERSION = 'hanjang-v9';
-const SHELL = ['./', './index.html', './firebase-config.js', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
+const VERSION = 'hanjang-v10';
+const SHELL = ['./', './index.html', './firebase-config.js', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png', './splash-1.jpg', './splash-2.jpg'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
