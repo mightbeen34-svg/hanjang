@@ -124,6 +124,10 @@ svg{display:block}
 .bk-btn.ghost{background:var(--bg);color:var(--ink);border:1px solid var(--line)}
 .bk-row .bk-wide{grid-column:1/-1}
 .bk-row.ex-row{grid-template-columns:repeat(3,1fr)}
+.bk-guide{font-size:13px;line-height:1.55;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.bk-guide b{display:block;margin-bottom:4px}
+.bk-guide ol{margin:6px 0 0;padding-left:18px}
+.bk-guide .bk-btn{margin-top:10px;width:100%}
 .bk-btn:disabled{opacity:.45}
 .profile-body{padding-bottom:12px}
 input[type=text]{width:100%;font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px}
@@ -352,7 +356,9 @@ textarea::placeholder{color:var(--muted)}
       <div class="bk-row">
         <button class="bk-btn" id="bkExport">백업 파일 저장</button>
         <label class="bk-btn ghost" for="bkFile" role="button" tabindex="0" id="bkImportLabel">백업 불러오기</label>
+        <button class="bk-btn ghost bk-wide" id="bkSend" hidden>Google 드라이브·카카오톡으로 보내기</button>
       </div>
+      <div class="bk-guide" id="bkGuide" hidden></div>
       <input type="file" id="bkFile" accept="application/json,.json,text/plain,.txt" hidden>
       <p class="p-note" id="bkHelp">'백업 파일 저장'을 누르고 '파일에 저장'을 고르면 iCloud Drive나 아이폰에 보관돼요. 휴대폰을 바꾸거나 앱을 지웠을 때 '백업 불러오기'로 되살릴 수 있어요. 불러온 기록은 지금 기록에 합쳐져요.</p>
     </section>
@@ -1186,8 +1192,18 @@ const ANDROID=/Android/i.test(navigator.userAgent);
 if(ANDROID){
   $('bkExport').textContent='휴대폰에 저장';
   $('bkFile').removeAttribute('accept');
-  $('bkHelp').textContent="'휴대폰에 저장'을 누르면 '내 파일 → 다운로드' 폴더에 백업 파일이 생겨요. 휴대폰을 잃어버려도 안전하려면 그 파일을 Google 드라이브 등에 한 부 더 올려 두세요. 되살릴 때는 '백업 불러오기'에서 그 파일을 고르면 되고, 불러온 기록은 지금 기록에 합쳐져요.";
+  $('bkSend').hidden=false;
+  $('bkHelp').textContent="'휴대폰에 저장'을 누르면 '내 파일 → 다운로드' 폴더에 백업 파일이 생겨요. 휴대폰을 잃어버려도 안전하려면 'Google 드라이브·카카오톡으로 보내기'로 드라이브나 카카오톡 '나와의 채팅'에 한 부 더 보관해 두세요. 되살릴 때는 '백업 불러오기'에서 그 파일을 고르면 되고, 불러온 기록은 지금 기록에 합쳐져요.";
 }
+/* 카카오톡·네이버 같은 앱 안에서 열린 화면은 공유 창도, 파일 저장도 막혀 있을 때가 많아요 */
+const INAPP=/KAKAOTALK|NAVER\(inapp|Instagram|FBAN|FBAV|Line\/|DaumApps|; wv\)/i.test(navigator.userAgent);
+function openInChrome(){
+  const u=location.href;
+  if(/KAKAOTALK/i.test(navigator.userAgent))location.href='kakaotalk://web/openExternal?url='+encodeURIComponent(u);
+  else location.href='intent://'+u.replace(/^https?:\/\//,'')+'#Intent;scheme=https;package=com.android.chrome;end';
+}
+function showGuide(html){const g=$('bkGuide');g.innerHTML=html;g.hidden=false;const b=g.querySelector('#bkChrome');if(b)b.onclick=openInChrome;g.scrollIntoView({block:'nearest',behavior:'smooth'})}
+const UPLOAD_STEPS=`<ol><li><b style="display:inline">Google 드라이브</b> 앱 → 오른쪽 아래 <b style="display:inline">+</b> → 업로드 → 다운로드 폴더에서 hanjang-backup 파일</li><li><b style="display:inline">카카오톡</b> → 나와의 채팅 → 왼쪽 아래 <b style="display:inline">+</b> → 파일 → hanjang-backup 파일</li></ol>`;
 function paintBackup(){
   const lb=meta.lastBackup, days=lb?Math.floor((Date.now()-lb)/864e5):Infinity;
   $('bkInfo').textContent=lb?`마지막 백업: ${fmtDate(lb)}${days>0?` (${days}일 전)`:' (오늘)'}`:'아직 백업한 적이 없어요.';
@@ -1220,7 +1236,27 @@ function exportBackup(){
   const file=backupFile('json','application/json');
   if(ANDROID)downloadFile(file);else shareFile(file,()=>downloadFile(file));
 }
+/* 안드로이드 공유 창은 .json을 받지 않아서, 내용은 같고 이름만 .txt인 백업을 보내요.
+   공유가 막히거나 실패해도 조용히 끝나지 않게, 무슨 일이 있었는지와 다음 할 일을 꼭 보여 줘요. */
+function sendBackup(){
+  $('bkGuide').hidden=true;
+  if(INAPP){
+    showGuide(`<b>카카오톡 같은 앱 안에서 열려 있어서 보내기가 막혀 있어요</b>Chrome에서 한 장을 열면 바로 보낼 수 있어요. 기록은 Chrome 쪽에 따로 저장되니, 지금 화면에서 '휴대폰에 저장'을 먼저 누른 뒤 Chrome에서 '백업 불러오기'로 옮겨 주세요.<button class="bk-btn" id="bkChrome">Chrome에서 열기</button>`);
+    return;
+  }
+  const file=backupFile('txt','text/plain');
+  const fallback=why=>{
+    saveBlob(backupFile('json','application/json'));markBackup('다운로드 폴더에 백업 파일을 저장했어요');
+    showGuide(`<b>${why} 대신 다운로드 폴더에 저장했어요</b>아래처럼 직접 올리면 돼요.${UPLOAD_STEPS}`);
+  };
+  if(!(navigator.canShare&&navigator.canShare({files:[file]}))){fallback('이 브라우저에서는 바로 보낼 수 없어서');return}
+  navigator.share({files:[file]}).then(()=>markBackup('백업 파일을 보냈어요')).catch(e=>{
+    if(e&&e.name==='AbortError'){toast('보내기를 닫았어요. 보낼 앱을 골라야 보내져요');return}
+    fallback('보내기가 되지 않아서');
+  });
+}
 $('bkExport').onclick=exportBackup;
+$('bkSend').onclick=sendBackup;
 $('nudge').onclick=()=>{if(ANDROID){renderPM();paintBackup();show($('pmSheet'))}else exportBackup()};
 $('bkImportLabel').addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();$('bkFile').click()}});
 $('bkFile').addEventListener('change',async e=>{
