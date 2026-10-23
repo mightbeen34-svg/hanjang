@@ -352,7 +352,6 @@ textarea::placeholder{color:var(--muted)}
       <div class="bk-row">
         <button class="bk-btn" id="bkExport">백업 파일 저장</button>
         <label class="bk-btn ghost" for="bkFile" role="button" tabindex="0" id="bkImportLabel">백업 불러오기</label>
-        <button class="bk-btn ghost bk-wide" id="bkSend" hidden>Google 드라이브·카카오톡으로 보내기</button>
       </div>
       <input type="file" id="bkFile" accept="application/json,.json,text/plain,.txt" hidden>
       <p class="p-note" id="bkHelp">'백업 파일 저장'을 누르고 '파일에 저장'을 고르면 iCloud Drive나 아이폰에 보관돼요. 휴대폰을 바꾸거나 앱을 지웠을 때 '백업 불러오기'로 되살릴 수 있어요. 불러온 기록은 지금 기록에 합쳐져요.</p>
@@ -1182,13 +1181,12 @@ let tt;function toast(m){const t=$('toast');t.textContent=m;t.classList.add('on'
 const pad=n=>String(n).padStart(2,'0');
 function fmtDate(t){const d=new Date(t);return `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일`}
 /* 안드로이드 크롬은 .json 파일을 공유 창으로 못 보내고, 파일 고르기에서 형식이 다르면 흐리게 막아 버려요.
-   그래서 안드로이드에서는 저장(다운로드 폴더)과 보내기(.txt로 공유)를 나눠 두고, 불러올 때는 모든 파일을 고를 수 있게 해요. */
+   그래서 안드로이드에서는 다운로드 폴더에 바로 저장하고, 불러올 때는 모든 파일을 고를 수 있게 해요. */
 const ANDROID=/Android/i.test(navigator.userAgent);
 if(ANDROID){
   $('bkExport').textContent='휴대폰에 저장';
-  $('bkSend').hidden=false;
   $('bkFile').removeAttribute('accept');
-  $('bkHelp').textContent="'휴대폰에 저장'을 누르면 '내 파일 → 다운로드' 폴더에 백업 파일이 생겨요. 휴대폰을 잃어버려도 안전하려면 'Google 드라이브·카카오톡으로 보내기'로 드라이브나 '나와의 채팅'에 한 부 더 보관해 두세요. 되살릴 때는 '백업 불러오기'에서 그 파일을 고르면 되고, 불러온 기록은 지금 기록에 합쳐져요.";
+  $('bkHelp').textContent="'휴대폰에 저장'을 누르면 '내 파일 → 다운로드' 폴더에 백업 파일이 생겨요. 휴대폰을 잃어버려도 안전하려면 그 파일을 Google 드라이브 등에 한 부 더 올려 두세요. 되살릴 때는 '백업 불러오기'에서 그 파일을 고르면 되고, 불러온 기록은 지금 기록에 합쳐져요.";
 }
 function paintBackup(){
   const lb=meta.lastBackup, days=lb?Math.floor((Date.now()-lb)/864e5):Infinity;
@@ -1222,13 +1220,7 @@ function exportBackup(){
   const file=backupFile('json','application/json');
   if(ANDROID)downloadFile(file);else shareFile(file,()=>downloadFile(file));
 }
-/* 안드로이드 공유 창은 .txt만 받아 줘서, 내용은 같고 이름만 .txt인 백업을 보내요 */
-function sendBackup(){
-  const file=backupFile('txt','text/plain');
-  shareFile(file,()=>{toast('이 휴대폰에서는 바로 보낼 수 없어서 다운로드 폴더에 저장할게요');downloadFile(backupFile('json','application/json'))});
-}
 $('bkExport').onclick=exportBackup;
-$('bkSend').onclick=sendBackup;
 $('nudge').onclick=()=>{if(ANDROID){renderPM();paintBackup();show($('pmSheet'))}else exportBackup()};
 $('bkImportLabel').addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();$('bkFile').click()}});
 $('bkFile').addEventListener('change',async e=>{
