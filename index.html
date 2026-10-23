@@ -1291,7 +1291,7 @@ function exportItems(){
 }
 const exportTitle=n=>[`한 장 · 내 글 모음`,`${fmtDate(Date.now())} 내보냄 · 게시물 ${n}개`];
 function dataBytes(u){const b=atob(u.slice(u.indexOf(',')+1)),a=new Uint8Array(b.length);for(let i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a}
-function loadImg(src){return new Promise(r=>{if(!src)return r(null);const i=new Image();i.onload=()=>r(i);i.onerror=()=>r(null);i.src=src})}
+function loadSrc(src){return new Promise(r=>{if(!src)return r(null);const i=new Image();i.onload=()=>r(i);i.onerror=()=>r(null);i.src=src})}
 
 function buildTxt(items){
   const out=[...exportTitle(items.length),''];
@@ -1326,7 +1326,7 @@ async function buildDocx(items){
   for(const it of items){
     body.push(wP(it.head,'<w:color w:val="6B6F80"/><w:sz w:val="18"/>','<w:keepNext/><w:spacing w:before="240" w:after="120"/>'));
     if(it.photo){
-      let src=it.photo;const im=await loadImg(src);
+      let src=it.photo;const im=await loadSrc(src);
       if(im){
         if(!/^data:image\/(jpeg|png);base64,/.test(src)){const c=document.createElement('canvas');c.width=im.naturalWidth;c.height=im.naturalHeight;c.getContext('2d').drawImage(im,0,0);src=c.toDataURL('image/jpeg',0.9)}
         const n=media.length+1,ext=src.startsWith('data:image/png')?'png':'jpeg';media.push({name:`word/media/image${n}.${ext}`,data:dataBytes(src)});
@@ -1393,7 +1393,7 @@ async function buildPdf(items){
   text(t1,`700 20px ${SANS}`,'#16171D',30);text(t2,`400 11px ${SANS}`,'#6B6F80',18);y+=22;
   for(const it of items){
     // 날짜만 페이지 끝에 홀로 남지 않게, 사진·카드가 들어갈 자리까지 함께 확인해요
-    const im=it.photo?await loadImg(it.photo):null;let w=CW,h=0;
+    const im=it.photo?await loadSrc(it.photo):null;let w=CW,h=0;
     if(im){h=w*im.naturalHeight/im.naturalWidth;const max=H*0.62;if(h>max){h=max;w=h*im.naturalWidth/im.naturalHeight}}
     const pc=PALETTE[it.bg]||PALETTE[0],n=(it.card||'').length,size=n<=12?28:n<=30?22:n<=60?18:15,lh=size*1.55,font=`400 ${size}px ${SERIF}`;
     g.font=font;const lines=it.card?wrap(it.card,CW-56):[],bh=Math.max(CW*0.62,lines.length*lh+64);
