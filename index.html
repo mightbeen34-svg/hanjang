@@ -21,10 +21,6 @@
 body{margin:0}
 img{max-width:100%}
 [hidden]{display:none!important}
-/* 로딩 화면: 앱을 켤 때 사진을 화면 가득 잠깐 보여 주고 사라져요 */
-#splash{position:fixed;inset:0;z-index:9999;background:#CFAE86;transition:opacity .35s ease}
-#splash img{width:100%;height:100%;max-width:none;object-fit:contain;display:block}
-#splash.out{opacity:0;pointer-events:none}
 /* Layout: 한 줄 피드(최대 470px) + 아래에서 올라오는 작성 시트, 아이폰 한 손 조작 기준 */
 :root{
   --bg:#F3F4F7; --surface:#FFFFFF; --ink:#16171D; --muted:#6B6F80; --line:#E1E3EA;
@@ -269,23 +265,6 @@ textarea::placeholder{color:var(--muted)}
 </style>
 </head>
 <body>
-<div id="splash" aria-hidden="true"><img alt=""></div>
-<script>
-(function(){
-  // 사진이 뜨면 0.8초쯤 보여 주고 사라져요. 사진을 못 불러와도 2초 뒤엔 꼭 사라져요.
-  var s=document.getElementById('splash'),img=s.firstChild,t0=Date.now(),done=false;
-  // 업데이트로 저절로 새로고침될 때는 로딩 화면 없이 바로 보여 줘요.
-  try{if(sessionStorage.getItem('hjNoSplash')){sessionStorage.removeItem('hjNoSplash');s.remove();return}}catch(e){}
-  // 북극여우·페럿 그림 중 하나를 그때그때 골라요. 화면 비율이 달라 남는 곳은 그림 테두리 색으로 채워요.
-  img.src=Math.random()<.5?'splash-1.jpg':'splash-2.jpg';
-  function hide(){
-    if(done)return;done=true;
-    setTimeout(function(){s.classList.add('out');setTimeout(function(){s.remove()},400)},Math.max(0,800-(Date.now()-t0)));
-  }
-  if(img.complete)hide();else{img.onload=hide;img.onerror=function(){t0=0;hide()};}
-  setTimeout(hide,2000);
-})();
-</script>
 <div class="wrap">
   <header class="top">
     <div class="brand">한 장<small>나만의 게시물</small></div>
@@ -1498,7 +1477,7 @@ if('serviceWorker' in navigator&&location.protocol==='https:'){
   }).catch(()=>{}));
   /* 새 버전이 깔리면 바로 새 화면으로 바꿔요. 글을 쓰는 중이면 창을 닫을 때까지 기다려요 */
   let hadSW=!!navigator.serviceWorker.controller,pendingReload=false;
-  const tryReload=()=>{if(pendingReload&&!openSheet){try{sessionStorage.setItem('hjNoSplash','1')}catch(e){}location.reload()}};
+  const tryReload=()=>{if(pendingReload&&!openSheet)location.reload()};
   navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!hadSW){hadSW=true;return}pendingReload=true;tryReload()});
   document.addEventListener('visibilitychange',tryReload);
   onHidden=()=>setTimeout(tryReload,400);
