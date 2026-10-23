@@ -589,9 +589,9 @@ function setView(v){view=v;$('tabAll').setAttribute('aria-pressed',v==='all');$(
 $('tabAll').onclick=()=>setView('all');$('tabSaved').onclick=()=>setView('saved');$('tabFriends').onclick=()=>setView('friends');
 
 /* 시트 열기/닫기 */
-let openSheet=null;
+let openSheet=null,onHidden=()=>{};
 function show(sheet){openSheet=sheet;sheet.classList.add('on');sheet.setAttribute('aria-hidden','false');$('scrim').classList.add('on');document.documentElement.classList.add('locked')}
-function hide(){if(!openSheet)return;openSheet.classList.remove('on');openSheet.setAttribute('aria-hidden','true');$('scrim').classList.remove('on');document.documentElement.classList.remove('locked');document.activeElement&&document.activeElement.blur();openSheet=null}
+function hide(){if(!openSheet)return;openSheet.classList.remove('on');openSheet.setAttribute('aria-hidden','true');$('scrim').classList.remove('on');document.documentElement.classList.remove('locked');document.activeElement&&document.activeElement.blur();openSheet=null;onHidden()}
 $('scrim').onclick=()=>{if(openSheet===$('compose')&&dirty()){toast('작성 중인 글이 있어요. 취소를 눌러 닫아 주세요.');return}hide()};
 
 /* 작성 */
@@ -1471,7 +1471,15 @@ async function boot(){
 }
 boot();
 if('serviceWorker' in navigator&&location.protocol==='https:'){
-  window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+  window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(reg=>{
+    document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')reg.update().catch(()=>{})});
+  }).catch(()=>{}));
+  /* 새 버전이 깔리면 바로 새 화면으로 바꿔요. 글을 쓰는 중이면 창을 닫을 때까지 기다려요 */
+  let hadSW=!!navigator.serviceWorker.controller,pendingReload=false;
+  const tryReload=()=>{if(pendingReload&&!openSheet)location.reload()};
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!hadSW){hadSW=true;return}pendingReload=true;tryReload()});
+  document.addEventListener('visibilitychange',tryReload);
+  onHidden=()=>setTimeout(tryReload,400);
 }
 })();
 </script>
