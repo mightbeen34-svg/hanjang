@@ -371,7 +371,7 @@ textarea::placeholder{color:var(--muted)}
         <button class="bk-btn ghost" id="exTxt">텍스트</button>
         <button class="bk-btn bk-wide" id="exReady" hidden>파일이 준비됐어요 · 눌러서 저장</button>
       </div>
-      <p class="p-note" id="exHelp">지금까지 쓴 글을 오래된 순서대로 한 파일에 모아요. 사진은 PDF와 워드 파일에 함께 들어가요. 다 만들어지면 '파일에 저장'이나 카카오톡 등으로 보낼 수 있어요. 읽고 출력하고 나누기 위한 파일이라, 기록을 되살릴 때는 위의 백업 파일을 써 주세요.</p>
+      <p class="p-note" id="exHelp">지금까지 쓴 글을 본문, 댓글, 답글까지 오래된 순서대로 한 파일에 모아요. 사진은 PDF와 워드 파일에 함께 들어가요. 다 만들어지면 '파일에 저장'이나 카카오톡 등으로 보낼 수 있어요. 읽고 출력하고 나누기 위한 파일이라, 기록을 되살릴 때는 위의 백업 파일을 써 주세요.</p>
     </section>
   </div>
 </section>
@@ -1287,15 +1287,26 @@ function exportItems(){
   const list=posts.filter(p=>!p.sample).sort((a,b)=>a.createdAt-b.createdAt);
   const many=new Set(list.map(p=>p.authorId)).size>1;
   return list.map(p=>({head:fmtStamp(p.createdAt)+(many?' · '+postAuthor(p).name:''),
-    photo:p.type==='photo'?p.img:null,card:p.type==='photo'?null:(p.text||''),bg:p.bg||0,caption:p.caption||''}));
+    photo:p.type==='photo'?p.img:null,card:p.type==='photo'?null:(p.text||''),bg:p.bg||0,caption:p.caption||'',comments:exportComments(p)}));
 }
+/* 댓글과 답글: 친구에게 공개한 글은 온라인에 있는 댓글을, 아니면 휴대폰에 저장된 댓글을 담아요 */
+function exportComments(p){
+  const one=c=>({who:cAuthor(c).name,when:fmtStamp(c.createdAt),text:c.text||''});
+  return threadOf(p).filter(c=>c.text).map(c=>({...one(c),replies:(c.replies||[]).filter(r=>r.text).map(one)}));
+}
+const exportCommentCount=it=>it.comments.reduce((n,c)=>n+1+c.replies.length,0);
 const exportTitle=n=>[`한 장 · 내 글 모음`,`${fmtDate(Date.now())} 내보냄 · 게시물 ${n}개`];
 function dataBytes(u){const b=atob(u.slice(u.indexOf(',')+1)),a=new Uint8Array(b.length);for(let i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a}
 function loadSrc(src){return new Promise(r=>{if(!src)return r(null);const i=new Image();i.onload=()=>r(i);i.onerror=()=>r(null);i.src=src})}
 
 function buildTxt(items){
   const out=[...exportTitle(items.length),''];
-  items.forEach(it=>{out.push('────────────────',it.head,'',[it.photo?'[사진]':'',it.card,it.caption].filter(Boolean).join('\n\n')||'(빈 글)','')});
+  items.forEach(it=>{out.push('────────────────',it.head,'',[it.photo?'[사진]':'',it.card,it.caption].filter(Boolean).join('\n\n')||'(빈 글)','');
+    if(!it.comments.length)return;
+    out.push(`댓글 ${exportCommentCount(it)}개`);
+    it.comments.forEach(c=>{out.push(`· ${c.who} (${c.when})`,'  '+c.text.replace(/\n/g,'\n  '));
+      c.replies.forEach(r=>out.push(`    └ ${r.who} (${r.when})`,'      '+r.text.replace(/\n/g,'\n      ')))});
+    out.push('')});
   return '﻿'+out.join('\n');
 }
 
@@ -1340,6 +1351,11 @@ async function buildDocx(items){
         `<w:pBdr>${['top','left','bottom','right'].map(bd).join('')}</w:pBdr><w:shd w:val="clear" w:color="auto" w:fill="${bg}"/><w:spacing w:before="200" w:after="320" w:line="360" w:lineRule="auto"/><w:ind w:left="300" w:right="300"/><w:jc w:val="center"/>`));
     }
     if(it.caption)body.push(wP(it.caption,'','<w:spacing w:after="120" w:line="320" w:lineRule="auto"/>'));
+    if(it.comments.length){
+      body.push(wP(`댓글 ${exportCommentCount(it)}개`,'<w:b/><w:color w:val="6B6F80"/><w:sz w:val="18"/>','<w:keepNext/><w:spacing w:before="160" w:after="60"/>'));
+      const cP=(c,ind)=>`<w:p><w:pPr><w:ind w:left="${ind}"/><w:spacing w:after="80"/></w:pPr>${wRuns(c.who,'<w:b/><w:sz w:val="20"/>')}${wRuns(`  ${c.when}`,'<w:color w:val="9A9DAA"/><w:sz w:val="16"/>')}<w:r><w:br/></w:r>${wRuns(c.text,'<w:sz w:val="20"/>')}</w:p>`;
+      it.comments.forEach(c=>{body.push(cP(c,200));c.replies.forEach(r=>body.push(cP(r,640)))});
+    }
     body.push('<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="4" w:space="8" w:color="E1E3EA"/></w:pBdr><w:spacing w:after="120"/></w:pPr></w:p>');
   }
   const doc=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><w:body>${body.join('')}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr></w:body></w:document>`;
@@ -1373,7 +1389,7 @@ function pdfBlob(pages,W,H){
 async function buildPdf(items){
   const W=595,H=842,S=2,M=56,CW=W-2*M,c=document.createElement('canvas'),g=c.getContext('2d');c.width=W*S;c.height=H*S;
   const SANS='"Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif',SERIF='"Gowun Batang","AppleMyungjo","Nanum Myeongjo",serif';
-  const [t1,t2]=exportTitle(items.length),all=t1+t2+items.map(i=>i.head+i.caption).join(''),cards=items.map(i=>i.card||'').join('')||'가';
+  const [t1,t2]=exportTitle(items.length),all=t1+t2+'댓글개└'+items.map(i=>i.head+i.caption+i.comments.map(c=>c.who+c.when+c.text+c.replies.map(r=>r.who+r.when+r.text).join('')).join('')).join(''),cards=items.map(i=>i.card||'').join('')||'가';
   // 쓰인 글자가 든 글꼴 조각만 받아 와요. 오프라인이면 휴대폰 기본 한글 글꼴로 그려요.
   try{await Promise.race([Promise.all([`400 12px ${SANS}`,`700 12px ${SANS}`].map(f=>document.fonts.load(f,all)).concat(document.fonts.load(`400 12px ${SERIF}`,cards))),new Promise(r=>setTimeout(r,5000))])}catch(e){}
   const pages=[];let y=0,no=0;
@@ -1388,7 +1404,7 @@ async function buildPdf(items){
       if(g.measureText(tok).width<=maxW){line=tok;continue}
       for(const ch of tok){if(line&&g.measureText(line+ch).width>maxW){out.push(line);line=ch}else line+=ch}
     }out.push(line.trimEnd())}return out};
-  const text=(t,font,color,lh)=>{g.font=font;for(const l of wrap(t,CW)){room(lh);g.fillStyle=color;g.font=font;g.fillText(l,M,y+lh*0.72);y+=lh}};
+  const text=(t,font,color,lh,ind=0)=>{g.font=font;for(const l of wrap(t,CW-ind)){room(lh);g.fillStyle=color;g.font=font;g.fillText(l,M+ind,y+lh*0.72);y+=lh}};
   begin();
   text(t1,`700 20px ${SANS}`,'#16171D',30);text(t2,`400 11px ${SANS}`,'#6B6F80',18);y+=22;
   for(const it of items){
@@ -1408,6 +1424,11 @@ async function buildPdf(items){
       g.fillStyle=pc.fg;g.font=font;g.textAlign='center';let ty=y+(bh-lines.length*lh)/2;
       for(const l of lines){g.fillText(l,M+CW/2,ty+lh*0.7);ty+=lh}g.textAlign='left';y+=bh+12}
     if(it.caption)text(it.caption,`400 12px ${SANS}`,'#16171D',20);
+    if(it.comments.length){
+      y+=10;room(40);text(`댓글 ${exportCommentCount(it)}개`,`700 10px ${SANS}`,'#6B6F80',18);
+      const cmt=(c,ind,mark)=>{room(34);text(`${mark}${c.who}  ·  ${c.when}`,`700 10px ${SANS}`,'#3A3D4A',16,ind);text(c.text,`400 11px ${SANS}`,'#16171D',17,ind+(mark?10:0));y+=6};
+      it.comments.forEach(c=>{cmt(c,8,'');c.replies.forEach(r=>cmt(r,26,'└ '))});
+    }
     y+=14;if(y<H-M){g.fillStyle='#E1E3EA';g.fillRect(M,y,CW,0.75)}y+=24;
   }
   finish();
@@ -1440,7 +1461,7 @@ $('exPdf').onclick=e=>runExport('pdf',e.currentTarget);
 $('exDocx').onclick=e=>runExport('docx',e.currentTarget);
 $('exTxt').onclick=e=>runExport('txt',e.currentTarget);
 $('exReady').onclick=()=>{const f=readyFile;readyFile=null;$('exReady').hidden=true;if(f)deliverExport(f)};
-if(ANDROID)$('exHelp').textContent="지금까지 쓴 글을 오래된 순서대로 한 파일에 모아요. 사진은 PDF와 워드 파일에 함께 들어가요. 파일은 '내 파일 → 다운로드' 폴더에 저장돼요. 읽고 출력하고 나누기 위한 파일이라, 기록을 되살릴 때는 위의 백업 파일을 써 주세요.";
+if(ANDROID)$('exHelp').textContent="지금까지 쓴 글을 본문, 댓글, 답글까지 오래된 순서대로 한 파일에 모아요. 사진은 PDF와 워드 파일에 함께 들어가요. 파일은 '내 파일 → 다운로드' 폴더에 저장돼요. 읽고 출력하고 나누기 위한 파일이라, 기록을 되살릴 때는 위의 백업 파일을 써 주세요.";
 
 /* 시작: 저장된 기록 불러오기(이전 버전 기록은 자동으로 옮김) */
 async function boot(){
