@@ -130,6 +130,23 @@ svg{display:block}
 .bk-guide ol{margin:6px 0 0;padding-left:18px}
 .bk-guide .bk-btn{margin-top:10px;width:100%}
 .bk-btn:disabled{opacity:.45}
+/* 내보내기: 전체 / 골라서 */
+.ex-choice{display:flex;flex-direction:column;gap:10px}
+.ex-opt{display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--bg);text-align:left}
+.ex-opt b{font-size:16px}
+.ex-opt span{font-size:13px;color:var(--muted)}
+.ex-bar{display:flex;justify-content:space-between;align-items:center;font-size:14px;color:var(--muted)}
+.ex-bar button{color:var(--accent);font-weight:700;padding:8px 0}
+.ex-list{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.ex-row{display:flex;align-items:center;gap:12px;padding:10px 12px;border-top:1px solid var(--line);cursor:pointer}
+.ex-row:first-child{border-top:0}
+.ex-row input{width:22px;height:22px;accent-color:var(--accent);flex:none;margin:0}
+.ex-thumb{width:44px;height:44px;border-radius:8px;border:1px solid var(--line);box-sizing:border-box;flex:none;overflow:hidden;display:grid;place-items:center;font-size:11px;font-family:var(--display)}
+.ex-thumb img{width:100%;height:100%;object-fit:cover}
+.ex-txt{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.35}
+.ex-txt b{font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ex-txt span{font-size:12px;color:var(--muted)}
+.ex-foot{position:sticky;bottom:0;background:var(--surface);padding-top:8px;display:flex;flex-direction:column;gap:8px}
 .profile-body{padding-bottom:12px}
 input[type=text]{width:100%;font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px}
 input[type=text]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -369,9 +386,8 @@ textarea::placeholder{color:var(--muted)}
         <button class="bk-btn ghost" id="exPdf">PDF</button>
         <button class="bk-btn ghost" id="exDocx">워드</button>
         <button class="bk-btn ghost" id="exTxt">텍스트</button>
-        <button class="bk-btn bk-wide" id="exReady" hidden>파일이 준비됐어요 · 눌러서 저장</button>
       </div>
-      <p class="p-note" id="exHelp">지금까지 쓴 글을 본문, 댓글, 답글까지 오래된 순서대로 한 파일에 모아요. 사진은 PDF와 워드 파일에 함께 들어가요. 다 만들어지면 '파일에 저장'이나 카카오톡 등으로 보낼 수 있어요. 읽고 출력하고 나누기 위한 파일이라, 기록을 되살릴 때는 위의 백업 파일을 써 주세요.</p>
+      <p class="p-note" id="exHelp">전체 글이나 골라 둔 글만 본문, 댓글, 답글까지 오래된 순서대로 한 파일에 모아요. 사진은 PDF와 워드 파일에 함께 들어가요. 다 만들어지면 '파일에 저장'이나 카카오톡 등으로 보낼 수 있어요. 읽고 출력하고 나누기 위한 파일이라, 기록을 되살릴 때는 위의 백업 파일을 써 주세요.</p>
     </section>
   </div>
 </section>
@@ -409,6 +425,28 @@ textarea::placeholder{color:var(--muted)}
     <button class="right" id="frClose" style="color:var(--muted);font-weight:500">닫기</button>
   </div>
   <div class="profile-body" id="frBody"></div>
+</section>
+
+<section class="sheet profile" id="exSheet" aria-label="글 내보내기" aria-hidden="true">
+  <div class="sheet-bar">
+    <button class="left" id="exBack">뒤로</button>
+    <h2 id="exTitle2">내보내기</h2>
+    <button class="right" id="exClose" style="color:var(--muted);font-weight:500">닫기</button>
+  </div>
+  <div class="profile-body">
+    <div class="ex-choice" id="exChoose">
+      <button class="ex-opt" id="exAll"><b>전체 내보내기</b><span id="exAllInfo"></span></button>
+      <button class="ex-opt" id="exPickOpen"><b>게시글 골라서 내보내기</b><span>원하는 글만 체크해서 한 파일로 만들어요</span></button>
+    </div>
+    <div class="ex-choice" id="exPick" hidden>
+      <div class="ex-bar"><span id="exCount">0개 선택</span><button id="exToggleAll">모두 선택</button></div>
+      <div class="ex-list" id="exList"></div>
+    </div>
+    <div class="ex-foot">
+      <button class="bk-btn" id="exGo" hidden>선택한 글 내보내기</button>
+      <button class="bk-btn" id="exReady" hidden>파일이 준비됐어요 · 눌러서 저장</button>
+    </div>
+  </div>
 </section>
 
 <section class="sheet" id="actionSheet" aria-hidden="true">
@@ -1283,8 +1321,8 @@ $('bkFile').addEventListener('change',async e=>{
    PDF는 한글 글꼴을 넣는 대신 페이지를 그림으로 그려 담아서, 어느 기기에서 열어도 글자가 깨지지 않아요. */
 function fmtStamp(t){const d=new Date(t),h=d.getHours();return `${fmtDate(t)} ${h<12?'오전':'오후'} ${h%12||12}:${pad(d.getMinutes())}`}
 function exportName(ext){const d=new Date();return `한장-글모음-${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}.${ext}`}
-function exportItems(){
-  const list=posts.filter(p=>!p.sample).sort((a,b)=>a.createdAt-b.createdAt);
+function exportItems(ids){
+  const list=posts.filter(p=>!p.sample&&(!ids||ids.has(p.id))).sort((a,b)=>a.createdAt-b.createdAt);
   const many=new Set(list.map(p=>p.authorId)).size>1;
   return list.map(p=>({head:fmtStamp(p.createdAt)+(many?' · '+postAuthor(p).name:''),
     photo:p.type==='photo'?p.img:null,card:p.type==='photo'?null:(p.text||''),bg:p.bg||0,caption:p.caption||'',comments:exportComments(p)}));
@@ -1439,15 +1477,53 @@ async function buildPdf(items){
    만드는 데 시간이 걸려 공유 창이 막히면, 버튼을 한 번 더 눌러 저장하게 해요. */
 let readyFile=null;
 function deliverExport(file){
-  if(ANDROID||!(navigator.canShare&&navigator.canShare({files:[file]}))){saveBlob(file);toast(ANDROID?'다운로드 폴더에 저장했어요':'파일을 저장했어요');return}
-  navigator.share({files:[file],title:file.name}).catch(e=>{
+  if(ANDROID||!(navigator.canShare&&navigator.canShare({files:[file]}))){saveBlob(file);toast(ANDROID?'다운로드 폴더에 저장했어요':'파일을 저장했어요');closeExport();return}
+  navigator.share({files:[file],title:file.name}).then(closeExport).catch(e=>{
     if(e&&e.name==='AbortError')return;
     if(e&&e.name==='NotAllowedError'){readyFile=file;$('exReady').hidden=false;return}
     saveBlob(file)});
 }
-async function runExport(kind,btn){
-  const items=exportItems();if(!items.length){toast('내보낼 글이 아직 없어요');return}
-  const btns=['exPdf','exDocx','exTxt'].map($),label=btn.textContent;
+/* 내보내기 버튼 → '전체' 또는 '골라서' 고르는 시트 */
+const EX_LABEL={pdf:'PDF',docx:'워드',txt:'텍스트'};
+let exKind='pdf',exChosen=new Set();
+const exportable=()=>posts.filter(p=>!p.sample);
+function openExport(kind){
+  const n=exportable().length;if(!n){toast('내보낼 글이 아직 없어요');return}
+  exKind=kind;exChosen=new Set();readyFile=null;
+  $('exTitle2').textContent=`${EX_LABEL[kind]}로 내보내기`;$('exAllInfo').textContent=`지금까지 쓴 글 ${n}개를 모두 한 파일로 만들어요`;
+  exView('choose');hide();show($('exSheet'));
+}
+function exView(v){
+  $('exChoose').hidden=v!=='choose';$('exPick').hidden=v!=='pick';$('exGo').hidden=v!=='pick';$('exReady').hidden=true;
+  $('exBack').style.visibility=v==='pick'?'visible':'hidden';
+  if(v==='pick')paintExPick();
+}
+function paintExPick(){
+  const list=exportable();
+  $('exList').innerHTML=list.map(p=>{
+    const c=PALETTE[p.bg]||PALETTE[0],t=(p.type==='photo'?p.caption:(p.text||p.caption))||'',line=t.split('\n')[0]||(p.type==='photo'?'사진':'(빈 글)');
+    const th=p.type==='photo'?`<img src="${p.img}" alt="" loading="lazy">`:esc((p.text||'').slice(0,4));
+    return `<label class="ex-row"><input type="checkbox" data-ex="${p.id}" ${exChosen.has(p.id)?'checked':''}>
+      <span class="ex-thumb" style="background:${c.bg};color:${c.fg}">${th}</span>
+      <span class="ex-txt"><b>${esc(line)}</b><span>${fmtStamp(p.createdAt)}${countComments(p)?` · 댓글 ${countComments(p)}`:''}</span></span></label>`}).join('');
+  paintExCount();
+}
+function paintExCount(){
+  const n=exChosen.size,all=exportable().length;
+  $('exCount').textContent=`${n}개 선택`;$('exToggleAll').textContent=n===all?'모두 해제':'모두 선택';
+  $('exGo').disabled=!n;$('exGo').textContent=n?`선택한 글 ${n}개 내보내기`:'내보낼 글을 골라 주세요';
+}
+$('exList').addEventListener('change',e=>{const id=e.target.dataset.ex;if(!id)return;if(e.target.checked)exChosen.add(id);else exChosen.delete(id);paintExCount()});
+$('exToggleAll').onclick=()=>{const all=exportable();exChosen=exChosen.size===all.length?new Set():new Set(all.map(p=>p.id));paintExPick()};
+function closeExport(){hide();renderPM();paintBackup();show($('pmSheet'))}
+$('exClose').onclick=closeExport;
+$('exBack').onclick=()=>exView('choose');
+$('exPickOpen').onclick=()=>exView('pick');
+$('exAll').onclick=e=>runExport(null,e.currentTarget);
+$('exGo').onclick=e=>runExport(exChosen,e.currentTarget);
+async function runExport(ids,btn){
+  const items=exportItems(ids);if(!items.length){toast('내보낼 글을 골라 주세요');return}
+  const kind=exKind,btns=['exAll','exPickOpen','exGo'].map($),label=btn.innerHTML;
   btns.forEach(b=>b.disabled=true);btn.textContent='만드는 중…';$('exReady').hidden=true;readyFile=null;
   try{
     const file=kind==='txt'?new File([buildTxt(items)],exportName('txt'),{type:'text/plain'})
@@ -1455,13 +1531,13 @@ async function runExport(kind,btn){
       :new File([await buildPdf(items)],exportName('pdf'),{type:'application/pdf'});
     deliverExport(file);
   }catch(e){console.error(e);toast('파일을 만들지 못했어요. 다시 한 번 눌러 주세요.')}
-  finally{btns.forEach(b=>b.disabled=false);btn.textContent=label}
+  finally{btns.forEach(b=>b.disabled=false);btn.innerHTML=label;if(btn===$('exGo'))paintExCount()}
 }
-$('exPdf').onclick=e=>runExport('pdf',e.currentTarget);
-$('exDocx').onclick=e=>runExport('docx',e.currentTarget);
-$('exTxt').onclick=e=>runExport('txt',e.currentTarget);
+$('exPdf').onclick=()=>openExport('pdf');
+$('exDocx').onclick=()=>openExport('docx');
+$('exTxt').onclick=()=>openExport('txt');
 $('exReady').onclick=()=>{const f=readyFile;readyFile=null;$('exReady').hidden=true;if(f)deliverExport(f)};
-if(ANDROID)$('exHelp').textContent="지금까지 쓴 글을 본문, 댓글, 답글까지 오래된 순서대로 한 파일에 모아요. 사진은 PDF와 워드 파일에 함께 들어가요. 파일은 '내 파일 → 다운로드' 폴더에 저장돼요. 읽고 출력하고 나누기 위한 파일이라, 기록을 되살릴 때는 위의 백업 파일을 써 주세요.";
+if(ANDROID)$('exHelp').textContent="전체 글이나 골라 둔 글만 본문, 댓글, 답글까지 오래된 순서대로 한 파일에 모아요. 사진은 PDF와 워드 파일에 함께 들어가요. 파일은 '내 파일 → 다운로드' 폴더에 저장돼요. 읽고 출력하고 나누기 위한 파일이라, 기록을 되살릴 때는 위의 백업 파일을 써 주세요.";
 
 /* 시작: 저장된 기록 불러오기(이전 버전 기록은 자동으로 옮김) */
 async function boot(){
