@@ -801,7 +801,7 @@ $('cList').addEventListener('click',e=>{
     if(editC&&(editC.id===cid||editC.parentId===cid))setReply(null);
     if(isOnlineThread(p)){
       if(!parentId&&replyTo&&replyTo.parentId===cid)setReply(null);
-      deleteRemoteComment(p,self,parentId?[]:parent.replies).then(ok=>toast(ok?(parentId?'답글을 삭제했어요':'댓글을 삭제했어요'):'삭제하지 못했어요. 인터넷 연결을 확인해 주세요.'));
+      deleteRemoteComment(p,self,parentId?[]:parent.replies).then(ok=>toast(ok===true?(parentId?'답글을 삭제했어요':'댓글을 삭제했어요'):fbFail(ok,'삭제하지')));
       return;
     }
     if(parentId)parent.replies=parent.replies.filter(r=>r.id!==cid);
@@ -822,7 +822,7 @@ async function saveCommentEdit(){
     const w=fb.updateDoc(fb.doc(fb.db,'posts',rid(p),'comments',t.id),{text,editedAt:Date.now()});
     // 화면에는 바로 보이고, 실제 저장은 뒤에서 마쳐요
     done();
-    try{await w}catch(e){toast('댓글을 고치지 못했어요. 인터넷 연결을 확인해 주세요.')}
+    try{await w}catch(e){toast(fbFail(e,'댓글을 고치지'))}
     return;
   }
   const top=p.comments.find(c=>c.id===(t.parentId||t.id)),c=top&&(t.parentId?top.replies.find(r=>r.id===t.id):top);
@@ -1135,13 +1135,22 @@ async function sendRemoteComment(text){
   $('cInput').value='';growInput();setReply(null);
   // 화면에는 바로 보이고, 실제 저장은 뒤에서 마쳐요
   requestAnimationFrame(()=>requestAnimationFrame(()=>flashComment(id)));
-  try{await w}catch(e){toast('댓글을 올리지 못했어요. 인터넷 연결을 확인해 주세요.');if(!$('cInput').value){$('cInput').value=text;growInput()}}
+  try{await w}catch(e){toast(fbFail(e,'댓글을 올리지'));if(!$('cInput').value){$('cInput').value=text;growInput()}}
+}
+// 서버가 거절한 이유를 사람이 알 수 있게 바꿔요(모든 실패를 '인터넷 문제'로 말하지 않도록)
+function fbFail(e,what){
+  const c=(e&&e.code||'').replace(/^firestore\//,'');
+  if(c==='permission-denied')return what+' 못했어요. 인터넷 문제가 아니라 서버 규칙이 막았어요. Firebase 콘솔 > Firestore > 규칙에 최신 firestore.rules를 붙여 넣고 게시해 주세요.';
+  if(c==='not-found')return what+' 못했어요. 이미 삭제된 것 같아요.';
+  if(c==='unauthenticated')return what+' 못했어요. 친구 기능 연결이 끊겼어요. 앱을 다시 열어 주세요.';
+  if(!navigator.onLine||c==='unavailable'||c==='deadline-exceeded')return what+' 못했어요. 인터넷 연결을 확인해 주세요.';
+  return what+' 못했어요. ('+(c||(e&&e.message)||'알 수 없는 오류')+')';
 }
 async function deleteRemoteComment(p,c,replies){
   const col=fb.collection(fb.db,'posts',rid(p),'comments'),b=fb.writeBatch(fb.db);
   b.delete(fb.doc(col,c.id));
   replies.filter(r=>canDeleteComment(p,r)).forEach(r=>b.delete(fb.doc(col,r.id)));
-  try{await b.commit();return true}catch(e){return false}
+  try{await b.commit();return true}catch(e){return e}
 }
 
 /* 친구 시트 */
@@ -1193,7 +1202,7 @@ $('frBody').addEventListener('click',async e=>{
       if(unfriendArmed!==id){unfriendArmed=id;renderFriends();setTimeout(()=>{if(unfriendArmed===id){unfriendArmed=null;renderFriends()}},3000);return}
       unfriendArmed=null;await fb.deleteDoc(ref);toast('친구를 끊었어요');
     }
-  }catch(err){toast('처리하지 못했어요. 인터넷 연결을 확인해 주세요.')}
+  }catch(err){toast(fbFail(err,'처리하지'))}
 });
 $('frBody').addEventListener('keydown',e=>{if(e.target.id==='frCode'&&e.key==='Enter'&&!e.isComposing){e.preventDefault();addFriend()}});
 async function addFriend(){
@@ -1210,7 +1219,7 @@ async function addFriend(){
     if(ex){await fb.updateDoc(fb.doc(fb.db,'friendships',id),{status:'accepted',acceptedAt:Date.now()});toast('친구가 되었어요')}
     else{await fb.setDoc(fb.doc(fb.db,'friendships',id),{members,from:online.uid,to,status:'pending',createdAt:Date.now()});toast('친구 신청을 보냈어요')}
     $('frCode').value='';
-  }catch(err){toast('신청하지 못했어요. 인터넷 연결을 확인해 주세요.')}
+  }catch(err){toast(fbFail(err,'신청하지'))}
 }
 
 /* 아이폰 키보드가 올라오면 시트를 키보드 위로 올림 */
@@ -1220,7 +1229,7 @@ if(window.visualViewport){
   vv.addEventListener('resize',fit);vv.addEventListener('scroll',fit);
 }
 
-let tt;function toast(m){const t=$('toast');t.textContent=m;t.classList.add('on');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('on'),2200)}
+let tt;function toast(m){const t=$('toast');t.textContent=m;t.classList.add('on');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('on'),Math.max(2200,m.length*90))}
 
 /* 백업 내보내기 · 불러오기 */
 const pad=n=>String(n).padStart(2,'0');
